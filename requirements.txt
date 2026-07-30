@@ -1,0 +1,8 @@
+pandas 
+numpy 
+scikit-learn 
+matplotlib
+scipy
+filterpy
+joblib  
+pywt
