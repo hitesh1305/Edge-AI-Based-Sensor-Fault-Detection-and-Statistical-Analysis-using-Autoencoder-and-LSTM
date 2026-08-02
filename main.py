@@ -73,8 +73,12 @@ def main():
 
     normalizer = DataNormalizer()
 
-    train = normalizer.fit_transform(train)
+    normalizer.fit(train)
 
+    train = normalizer.transform(train)
+    
+    normalizer.save("output/models/scaler.pkl")
+    
     print("\n========== NORMALIZED DATASET ==========")
     print(train.head())
 

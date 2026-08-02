@@ -1,5 +1,11 @@
 """
 Statistical Anomaly Detection using Z-Score
+
+This module computes sensor-wise Z-scores,
+creates a statistical anomaly report,
+and adds only two useful features:
+    • max_z_score
+    • zscore_flag
 """
 
 from pathlib import Path
@@ -11,10 +17,6 @@ import seaborn as sns
 
 
 class ZScoreDetector:
-    """
-    Performs statistical anomaly detection using
-    sensor-wise Z-Score analysis.
-    """
 
     def __init__(self, threshold=3.0):
 
@@ -25,9 +27,8 @@ class ZScoreDetector:
         df = df.copy()
 
         sensor_columns = [
-            col
-            for col in df.columns
-            if col.startswith("sensor_")
+            c for c in df.columns
+            if c.startswith("sensor_")
         ]
 
         print("\n" + "=" * 70)
@@ -36,9 +37,15 @@ class ZScoreDetector:
 
         report = []
 
-        max_scores = np.zeros(len(df))
+        max_z = np.zeros(len(df))
 
-        flags = np.zeros(len(df), dtype=int)
+        anomaly_flag = np.zeros(len(df), dtype=int)
+
+        heatmap_matrix = []
+
+        # --------------------------------------------------
+        # Process each sensor independently
+        # --------------------------------------------------
 
         for sensor in sensor_columns:
 
@@ -51,38 +58,49 @@ class ZScoreDetector:
             else:
                 z = np.abs((df[sensor] - mean) / std)
 
-            df[f"{sensor}_z"] = z
+            heatmap_matrix.append(z)
 
-            anomalies = z > self.threshold
+            max_z = np.maximum(max_z, z)
 
-            anomaly_count = int(anomalies.sum())
+            anomaly_flag = np.where(
+                z > self.threshold,
+                1,
+                anomaly_flag
+            )
 
-            anomaly_percent = anomaly_count / len(df) * 100
+            anomalies = int((z > self.threshold).sum())
 
             report.append({
                 "Sensor": sensor,
-                "Mean": mean,
-                "Std": std,
-                "Anomalies": anomaly_count,
-                "Percentage": anomaly_percent
+                "Mean": round(mean, 4),
+                "Std": round(std, 4),
+                "Max Z-Score": round(z.max(), 4),
+                "Anomalies": anomalies,
+                "Percentage": round(
+                    anomalies / len(df) * 100,
+                    3
+                )
             })
-
-            max_scores = np.maximum(max_scores, z)
-
-            flags = np.where(anomalies, 1, flags)
 
             print(
                 f"{sensor:<12}"
-                f" | "
-                f"Anomalies: {anomaly_count:<5}"
-                f" ({anomaly_percent:.2f}%)"
+                f"  Max Z = {z.max():6.2f}"
+                f"   Anomalies = {anomalies}"
             )
 
-        df["max_z_score"] = max_scores
+        # --------------------------------------------------
+        # Keep ONLY useful outputs
+        # --------------------------------------------------
 
-        df["zscore_flag"] = flags
+        df["max_z_score"] = max_z
+
+        df["zscore_flag"] = anomaly_flag
 
         report_df = pd.DataFrame(report)
+
+        # --------------------------------------------------
+        # Console Summary
+        # --------------------------------------------------
 
         print("\n" + "-" * 70)
 
@@ -96,40 +114,37 @@ class ZScoreDetector:
             f"{df['zscore_flag'].mean()*100:.2f}%"
         )
 
-        print("-" * 70)
-
-        # -----------------------------------------------------
-        # Save CSV
-        # -----------------------------------------------------
-
-        output_table = Path("output/tables")
-
-        output_table.mkdir(
-            parents=True,
-            exist_ok=True
+        print(
+            f"Maximum Z Score             : "
+            f"{df['max_z_score'].max():.2f}"
         )
 
+        print("-" * 70)
+
+        # --------------------------------------------------
+        # Save Report
+        # --------------------------------------------------
+
+        tables = Path("output/tables")
+        tables.mkdir(parents=True, exist_ok=True)
+
         report_df.to_csv(
-            output_table / "zscore_report.csv",
+            tables / "zscore_report.csv",
             index=False
         )
 
-        # -----------------------------------------------------
+        # --------------------------------------------------
         # Histogram
-        # -----------------------------------------------------
+        # --------------------------------------------------
 
-        output_fig = Path("output/figures")
-
-        output_fig.mkdir(
-            parents=True,
-            exist_ok=True
-        )
+        figures = Path("output/figures")
+        figures.mkdir(parents=True, exist_ok=True)
 
         plt.figure(figsize=(8,5))
 
         plt.hist(
             df["max_z_score"],
-            bins=60,
+            bins=50,
             edgecolor="black"
         )
 
@@ -152,47 +167,45 @@ class ZScoreDetector:
         plt.tight_layout()
 
         plt.savefig(
-            output_fig / "zscore_distribution.png",
+            figures / "zscore_distribution.png",
             dpi=300
         )
 
         plt.close()
 
-        # -----------------------------------------------------
+        # --------------------------------------------------
         # Heatmap
-        # -----------------------------------------------------
+        # --------------------------------------------------
 
-        z_columns = [
-            c
-            for c in df.columns
-            if c.endswith("_z")
-        ]
-
-        plt.figure(figsize=(14,8))
+        plt.figure(figsize=(14,7))
 
         sns.heatmap(
-            df[z_columns].head(300),
+            np.array(heatmap_matrix)[:, :300],
             cmap="viridis",
             cbar=True
         )
 
         plt.title(
-            "Sensor-wise Z-Score Heatmap (First 300 Samples)"
+            "Sensor-wise Z-Score Heatmap"
         )
+
+        plt.xlabel("Samples")
+
+        plt.ylabel("Sensors")
 
         plt.tight_layout()
 
         plt.savefig(
-            output_fig / "zscore_heatmap.png",
+            figures / "zscore_heatmap.png",
             dpi=300
         )
 
         plt.close()
 
-        print("\n✓ Z-Score report saved")
+        print("\n✓ Z-Score Report Saved")
 
-        print("✓ Distribution plot saved")
+        print("✓ Distribution Plot Saved")
 
-        print("✓ Heatmap saved")
+        print("✓ Heatmap Saved")
 
         return df

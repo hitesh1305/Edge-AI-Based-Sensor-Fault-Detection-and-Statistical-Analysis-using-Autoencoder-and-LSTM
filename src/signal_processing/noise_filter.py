@@ -1,5 +1,8 @@
 """
 Noise Filtering using Savitzky-Golay Filter
+
+Applies smoothing independently to each engine
+to preserve degradation trajectories.
 """
 
 import pandas as pd
@@ -7,14 +10,12 @@ from scipy.signal import savgol_filter
 
 
 class NoiseFilter:
-    """
-    Applies Savitzky-Golay smoothing
-    to all sensor signals.
-    """
 
-    def __init__(self,
-                 window_length=11,
-                 polyorder=2):
+    def __init__(
+        self,
+        window_length=11,
+        polyorder=2
+    ):
 
         self.window_length = window_length
         self.polyorder = polyorder
@@ -29,19 +30,43 @@ class NoiseFilter:
             if col.startswith("sensor_")
         ]
 
-        print("\n========== NOISE FILTER ==========")
+        print("\n" + "=" * 70)
+        print("NOISE FILTERING")
+        print("=" * 70)
 
-        print(f"Filtering {len(sensor_columns)} sensors...")
+        print(f"Total Engines : {filtered['engine_id'].nunique()}")
+        print(f"Sensors       : {len(sensor_columns)}")
 
-        for sensor in sensor_columns:
+        # ----------------------------------------
+        # Filter every engine independently
+        # ----------------------------------------
 
-            filtered[sensor] = savgol_filter(
-                filtered[sensor],
-                window_length=self.window_length,
-                polyorder=self.polyorder,
-                mode="nearest"
-            )
+        for engine in filtered["engine_id"].unique():
 
-        print("✓ Noise filtering completed")
+            engine_mask = filtered["engine_id"] == engine
+
+            engine_data = filtered.loc[engine_mask]
+
+            for sensor in sensor_columns:
+
+                signal = engine_data[sensor].values
+
+                # Skip if sequence is too short
+                if len(signal) < self.window_length:
+                    continue
+
+                filtered_signal = savgol_filter(
+                    signal,
+                    window_length=self.window_length,
+                    polyorder=self.polyorder,
+                    mode="nearest"
+                )
+
+                filtered.loc[
+                    engine_mask,
+                    sensor
+                ] = filtered_signal
+
+        print("\n✓ Noise filtering completed.")
 
         return filtered
