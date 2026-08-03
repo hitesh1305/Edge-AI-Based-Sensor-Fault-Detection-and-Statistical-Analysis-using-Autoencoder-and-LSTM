@@ -1,49 +1,130 @@
 """
 Sliding Window Generator
+
+Creates sequential windows for each engine independently.
+Each window is assigned the RUL of its last time step.
 """
+
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
 
+from configs.config import (
+    WINDOW_SIZE,
+    TABLES_DIR
+)
+
 
 class WindowGenerator:
-    """
-    Generates sliding windows for sequence models.
-    """
 
-    def __init__(self, window_size=30):
+    def __init__(
+        self,
+        window_size=WINDOW_SIZE,
+        stride=1
+    ):
+
         self.window_size = window_size
+        self.stride = stride
 
-    def generate(self, df: pd.DataFrame):
+    def generate(self, df):
 
-        feature_cols = [
-            col for col in df.columns
-            if col not in ["engine_id", "cycle", "RUL"]
+        print("\n" + "=" * 70)
+        print("SLIDING WINDOW GENERATION")
+        print("=" * 70)
+
+        feature_columns = [
+            col
+            for col in df.columns
+            if col not in [
+                "engine_id",
+                "cycle",
+                "RUL",
+                "max_z_score",
+                "zscore_flag"
+            ]
         ]
 
         X = []
         y = []
 
-        # Process each engine independently
-        for _, engine_data in df.groupby("engine_id"):
+        metadata = []
 
-            engine_data = engine_data.reset_index(drop=True)
+        window_id = 0
 
-            features = engine_data[feature_cols].values
-            rul = engine_data["RUL"].values
+        engines = sorted(df["engine_id"].unique())
 
-            for i in range(len(engine_data) - self.window_size + 1):
+        print(f"Total Engines : {len(engines)}")
+        print(f"Window Size   : {self.window_size}")
+        print(f"Stride        : {self.stride}")
 
-                X.append(features[i:i + self.window_size])
-                y.append(rul[i + self.window_size - 1])
+        for engine in engines:
 
-        X = np.array(X)
-        y = np.array(y)
+            engine_df = (
+                df[df["engine_id"] == engine]
+                .sort_values("cycle")
+                .reset_index(drop=True)
+            )
 
-        print("\n========== WINDOW GENERATION ==========")
-        print(f"Window Size : {self.window_size}")
-        print(f"Samples     : {len(X)}")
-        print(f"X Shape     : {X.shape}")
-        print(f"y Shape     : {y.shape}")
+            total_cycles = len(engine_df)
 
-        return X, y
+            for start in range(
+                0,
+                total_cycles - self.window_size + 1,
+                self.stride
+            ):
+
+                end = start + self.window_size
+
+                window = engine_df.iloc[start:end]
+
+                X.append(
+                    window[feature_columns].values
+                )
+
+                y.append(
+                    window["RUL"].iloc[-1]
+                )
+
+                metadata.append({
+                    "window_id": window_id,
+                    "engine_id": engine,
+                    "start_cycle": int(window["cycle"].iloc[0]),
+                    "end_cycle": int(window["cycle"].iloc[-1]),
+                    "target_rul": int(window["RUL"].iloc[-1])
+                })
+
+                window_id += 1
+
+        X = np.asarray(X, dtype=np.float32)
+
+        y = np.asarray(y, dtype=np.float32)
+
+        metadata = pd.DataFrame(metadata)
+
+        TABLES_DIR.mkdir(
+            parents=True,
+            exist_ok=True
+        )
+
+        metadata.to_csv(
+            TABLES_DIR / "window_information.csv",
+            index=False
+        )
+
+        print("\n✓ Window information saved")
+
+        print("\nTotal Windows :", len(X))
+        print("Feature Shape :", X.shape)
+        print("Target Shape  :", y.shape)
+
+        print("\nFirst Window Shape")
+        print(X[0].shape)
+
+        print("\nFirst Window Target (RUL)")
+        print(y[0])
+
+        print("\nFirst Feature Vector")
+        print(X[0][0])
+
+        return X, y, metadata

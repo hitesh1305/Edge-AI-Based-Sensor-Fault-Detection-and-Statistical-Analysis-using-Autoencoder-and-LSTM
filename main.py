@@ -9,6 +9,7 @@ from configs.config import TRAIN_FILE, TEST_FILE, RUL_FILE
 # ==========================
 # Data
 # ==========================
+from src.features.windowing import WindowGenerator
 from src.data.loader import CMAPSSLoader
 from src.data.preprocessing import Preprocessor
 from src.data.normalizer import DataNormalizer
@@ -113,13 +114,33 @@ def main():
     # ==========================================================
     # STEP 7 : Kalman Filter
     # ==========================================================
-    
+
     kalman = KalmanFilterEstimator()
-    
+
     train = kalman.apply(train)
-    
+
     print("\n========== KALMAN FILTERED DATA ==========")
     print(train.head())
+    
+    # ==========================================================
+    # STEP 8 : Sliding Window Generation
+    # ==========================================================
+    
+    window_generator = WindowGenerator(
+        window_size=30,
+        stride=1
+    )
+    
+    X, y, metadata = window_generator.generate(train)
+    
+    print("\n========== WINDOW DATA ==========")
+    
+    print("Input Shape :", X.shape)
+    print("Target Shape:", y.shape)
+    
+    print("\nMetadata")
+    print(metadata.head())
+    
     # ==========================================================
     # Current Dataset Summary
     # ==========================================================
