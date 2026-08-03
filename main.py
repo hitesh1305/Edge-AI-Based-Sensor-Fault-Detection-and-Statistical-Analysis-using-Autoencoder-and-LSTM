@@ -29,6 +29,11 @@ from src.signal_processing.noise_filter import NoiseFilter
 from src.statistics.zscore_detector import ZScoreDetector
 
 
+# ==========================
+# Kalman Filter
+# ==========================
+from src.signal_processing.kalman_filter import KalmanFilterEstimator
+
 def main():
 
     print("\n" + "=" * 70)
@@ -104,6 +109,17 @@ def main():
     print("\n========== DATA AFTER Z-SCORE ==========")
     print(train.head())
 
+
+    # ==========================================================
+    # STEP 7 : Kalman Filter
+    # ==========================================================
+    
+    kalman = KalmanFilterEstimator()
+    
+    train = kalman.apply(train)
+    
+    print("\n========== KALMAN FILTERED DATA ==========")
+    print(train.head())
     # ==========================================================
     # Current Dataset Summary
     # ==========================================================

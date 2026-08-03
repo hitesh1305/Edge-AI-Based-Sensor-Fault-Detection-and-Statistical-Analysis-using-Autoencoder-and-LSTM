@@ -42,8 +42,8 @@ ZSCORE_THRESHOLD = 3.0
 # Kalman Filter Parameters
 # ==========================================================
 
-KF_PROCESS_VARIANCE = 1e-5
-KF_MEASUREMENT_VARIANCE = 1e-2
+KF_PROCESS_VARIANCE = 1e-3
+KF_MEASUREMENT_VARIANCE = 5e-3
 KF_INITIAL_ERROR = 1.0
 
 # ==========================================================
