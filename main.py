@@ -56,6 +56,8 @@ from src.models.isolation_forest import IsolationForestDetector
 
 from src.models.autoencoder import AutoencoderDetector
 
+from src.models.fault_fusion import FaultScoreFusion
+
 from src.models.lstm_predictor import LSTMPredictor
 
 def main():
@@ -766,13 +768,268 @@ def main():
 
 
     # ==========================================================
-    # STEP 13 : LSTM RUL PREDICTION
+    # STEP 13 : PROPOSED FAULT SCORE FUSION
     # ==========================================================
-    
+
     print("\n" + "=" * 70)
-    print("STEP 13 : LSTM-BASED RUL PREDICTION")
+    print("STEP 13 : PROPOSED FAULT SCORE FUSION")
     print("=" * 70)
-    
+
+    """
+    Research Design
+    ---------------
+    Isolation Forest and Dense Autoencoder provide complementary
+    anomaly evidence.
+
+    Isolation Forest:
+        Detects deviations in the wavelet feature space.
+
+    Dense Autoencoder:
+        Detects abnormal reconstruction behavior.
+
+    Their continuous anomaly scores are normalized using
+    VALIDATION data only and combined using a 50:50 weighted
+    fusion.
+
+    The fusion threshold is selected using VALIDATION F1.
+
+    The TEST set is used only for final evaluation.
+    """
+
+    # ----------------------------------------------------------
+    # Create Fusion Model
+    # ----------------------------------------------------------
+
+    fault_fusion = FaultScoreFusion(
+        isolation_weight=0.5,
+        autoencoder_weight=0.5
+    )
+
+    print("\nFusion Weights")
+    print(
+        f"Isolation Forest : "
+        f"{fault_fusion.isolation_weight:.2f}"
+    )
+
+    print(
+        f"Autoencoder      : "
+        f"{fault_fusion.autoencoder_weight:.2f}"
+    )
+
+    # ----------------------------------------------------------
+    # VALIDATION SCORE NORMALIZATION
+    # ----------------------------------------------------------
+    #
+    # IMPORTANT:
+    # The normalization parameters are learned ONLY from
+    # validation data.
+    #
+    # Test information is not used during threshold selection.
+
+    fault_fusion.fit_scaler(
+        validation_scores,
+        validation_errors
+    )
+
+    (
+        validation_if_normalized,
+        validation_ae_normalized
+    ) = fault_fusion.transform_scores(
+        validation_scores,
+        validation_errors
+    )
+
+    # ----------------------------------------------------------
+    # VALIDATION FUSION SCORE
+    # ----------------------------------------------------------
+
+    validation_fused_scores = (
+        fault_fusion.fuse_scores(
+            validation_if_normalized,
+            validation_ae_normalized
+        )
+    )
+
+    # ----------------------------------------------------------
+    # SELECT FUSION THRESHOLD
+    # ----------------------------------------------------------
+    #
+    # Threshold is selected ONLY using validation data.
+
+    fault_fusion.select_threshold(
+        validation_fused_scores,
+        validation_labels
+    )
+
+    validation_fusion_predictions = (
+        fault_fusion.predict(
+            validation_fused_scores
+        )
+    )
+
+    # ----------------------------------------------------------
+    # VALIDATION EVALUATION
+    # ----------------------------------------------------------
+
+    fusion_validation_results = (
+        fault_fusion.evaluate(
+            validation_labels,
+            validation_fusion_predictions,
+            validation_fused_scores,
+            "validation"
+        )
+    )
+
+    # ----------------------------------------------------------
+    # TEST SCORE NORMALIZATION
+    # ----------------------------------------------------------
+    #
+    # The scaler fitted on validation data is reused here.
+    # No fitting is performed on test data.
+
+    (
+        test_if_normalized,
+        test_ae_normalized
+    ) = fault_fusion.transform_scores(
+        test_scores,
+        test_errors
+    )
+
+    # ----------------------------------------------------------
+    # TEST FUSION SCORE
+    # ----------------------------------------------------------
+
+    test_fused_scores = (
+        fault_fusion.fuse_scores(
+            test_if_normalized,
+            test_ae_normalized
+        )
+    )
+
+    # ----------------------------------------------------------
+    # FINAL TEST PREDICTION
+    # ----------------------------------------------------------
+    #
+    # The threshold was determined on validation data.
+    # It is NOT recalculated using the test set.
+
+    test_fusion_predictions = (
+        fault_fusion.predict(
+            test_fused_scores
+        )
+    )
+
+    # ----------------------------------------------------------
+    # FINAL TEST EVALUATION
+    # ----------------------------------------------------------
+
+    fusion_test_results = (
+        fault_fusion.evaluate(
+            test_labels,
+            test_fusion_predictions,
+            test_fused_scores,
+            "test"
+        )
+    )
+
+    # ----------------------------------------------------------
+    # SAVE RAW + NORMALIZED FUSION SCORES
+    # ----------------------------------------------------------
+
+    fault_fusion.save_scores(
+        window_ids=metadata_test["window_id"].to_numpy(),
+        labels=test_labels,
+        isolation_scores=test_scores,
+        autoencoder_errors=test_errors,
+        isolation_normalized=test_if_normalized,
+        autoencoder_normalized=test_ae_normalized,
+        fused_scores=test_fused_scores,
+        predictions=test_fusion_predictions,
+        output_path=(
+            "output/tables/fusion/"
+            "test_anomaly_scores.csv"
+        )
+    )
+
+    # ----------------------------------------------------------
+    # SAVE VALIDATION SCORES
+    # ----------------------------------------------------------
+
+    fault_fusion.save_scores(
+        window_ids=metadata_validation["window_id"].to_numpy(),
+        labels=validation_labels,
+        isolation_scores=validation_scores,
+        autoencoder_errors=validation_errors,
+        isolation_normalized=validation_if_normalized,
+        autoencoder_normalized=validation_ae_normalized,
+        fused_scores=validation_fused_scores,
+        predictions=validation_fusion_predictions,
+        output_path=(
+            "output/tables/fusion/"
+            "validation_anomaly_scores.csv"
+        )
+    )
+
+    # ----------------------------------------------------------
+    # SAVE FINAL TEST RESULTS
+    # ----------------------------------------------------------
+
+    fault_fusion.save_results(
+        fusion_test_results,
+        "output/tables/fusion/results.csv"
+    )
+
+    # ----------------------------------------------------------
+    # CONFUSION MATRIX
+    # ----------------------------------------------------------
+
+    fault_fusion.plot_confusion_matrix(
+        test_labels,
+        test_fusion_predictions,
+        "output/figures/fusion_confusion_test.png"
+    )
+
+    # ----------------------------------------------------------
+    # ROC CURVE
+    # ----------------------------------------------------------
+
+    fault_fusion.plot_roc_curve(
+        test_labels,
+        test_fused_scores,
+        "output/figures/fusion_roc_test.png"
+    )
+
+    # ----------------------------------------------------------
+    # SCORE DISTRIBUTION
+    # ----------------------------------------------------------
+
+    fault_fusion.plot_score_distribution(
+        test_fused_scores,
+        test_labels,
+        fault_fusion.threshold,
+        "output/figures/fusion_score_distribution_test.png"
+    )
+
+    # ----------------------------------------------------------
+    # INFERENCE PERFORMANCE
+    # ----------------------------------------------------------
+
+    fusion_inference = (
+        fault_fusion.measure_inference_time(
+            test_scores,
+            test_errors
+        )
+    )
+
+    print("\n✓ Proposed fault score fusion completed.")
+    # ==========================================================
+    # STEP 14 : LSTM RUL PREDICTION
+    # ==========================================================
+
+    print("\n" + "=" * 70)
+    print("STEP 14 : LSTM-BASED RUL PREDICTION")
+    print("=" * 70)
+
     # ----------------------------------------------------------
     # Prepare LSTM input
     # ----------------------------------------------------------
@@ -782,11 +1039,11 @@ def main():
     # Training   : (12377, 30, 17)
     # Validation : (2725, 30, 17)
     # Test       : (2629, 30, 17)
-    
+
     X_train_lstm = X_train.astype(np.float32)
     X_validation_lstm = X_validation.astype(np.float32)
     X_test_lstm = X_test.astype(np.float32)
-    
+
     # ----------------------------------------------------------
     # RUL targets
     # ----------------------------------------------------------
@@ -795,78 +1052,78 @@ def main():
     # IMPORTANT:
     # We use metadata generated by WindowGenerator rather than
     # reconstructing RUL values manually.
-    
+
     y_train_lstm = (
         metadata_train["target_rul"]
         .to_numpy(dtype=np.float32)
     )
-    
+
     y_validation_lstm = (
         metadata_validation["target_rul"]
         .to_numpy(dtype=np.float32)
     )
-    
+
     y_test_lstm = (
         metadata_test["target_rul"]
         .to_numpy(dtype=np.float32)
     )
-    
+
     print("\n" + "-" * 70)
     print("LSTM RUL DATA")
     print("-" * 70)
-    
+
     print(
         "Training Input Shape   :",
         X_train_lstm.shape
     )
-    
+
     print(
         "Validation Input Shape :",
         X_validation_lstm.shape
     )
-    
+
     print(
         "Test Input Shape       :",
         X_test_lstm.shape
     )
-    
+
     print(
         "Training RUL Shape      :",
         y_train_lstm.shape
     )
-    
+
     print(
         "Validation RUL Shape   :",
         y_validation_lstm.shape
     )
-    
+
     print(
         "Test RUL Shape         :",
         y_test_lstm.shape
     )
-    
+
     print(
         "\nTraining RUL Range     :",
         f"{y_train_lstm.min():.0f} - "
         f"{y_train_lstm.max():.0f}"
     )
-    
+
     print(
         "Validation RUL Range   :",
         f"{y_validation_lstm.min():.0f} - "
         f"{y_validation_lstm.max():.0f}"
     )
-    
+
     print(
         "Test RUL Range         :",
         f"{y_test_lstm.min():.0f} - "
         f"{y_test_lstm.max():.0f}"
     )
-    
+
     # ----------------------------------------------------------
     # Create LSTM Predictor
     # ----------------------------------------------------------
-    
+
     lstm_predictor = LSTMPredictor(
         timesteps=X_train_lstm.shape[1],
         features=X_train_lstm.shape[2],
@@ -876,11 +1133,11 @@ def main():
         epochs=50,
         dropout=0.2,
     )
-    
+
     # ----------------------------------------------------------
     # Train LSTM
     # ----------------------------------------------------------
-    
+
     lstm_history, lstm_training_time = (
         lstm_predictor.fit(
             X_train_lstm,
@@ -889,29 +1146,29 @@ def main():
             y_validation_lstm,
         )
     )
-    
+
     # ----------------------------------------------------------
     # Training History
     # ----------------------------------------------------------
-    
+
     lstm_predictor.plot_training_history(
         lstm_history
     )
-    
+
     # ----------------------------------------------------------
     # Validation Prediction
     # ----------------------------------------------------------
-    
+
     print("\n" + "=" * 70)
     print("LSTM VALIDATION RUL PREDICTION")
     print("=" * 70)
-    
+
     validation_predictions_rul = (
         lstm_predictor.predict(
             X_validation_lstm
         )
     )
-    
+
     validation_rul_results = (
         lstm_predictor.evaluate(
             y_validation_lstm,
@@ -919,47 +1176,47 @@ def main():
             "validation",
         )
     )
-    
+
     lstm_predictor.save_results(
         validation_rul_results
     )
-    
+
     # ----------------------------------------------------------
     # Validation Figures
     # ----------------------------------------------------------
-    
+
     lstm_predictor.plot_predictions(
         y_validation_lstm,
         validation_predictions_rul,
         "validation",
     )
-    
+
     lstm_predictor.plot_error_distribution(
         y_validation_lstm,
         validation_predictions_rul,
         "validation",
     )
-    
+
     lstm_predictor.plot_actual_vs_predicted(
         y_validation_lstm,
         validation_predictions_rul,
         "validation",
     )
-    
+
     # ----------------------------------------------------------
     # FINAL TEST PREDICTION
     # ----------------------------------------------------------
-    
+
     print("\n" + "=" * 70)
     print("LSTM FINAL TEST RUL PREDICTION")
     print("=" * 70)
-    
+
     test_predictions_rul = (
         lstm_predictor.predict(
             X_test_lstm
         )
     )
-    
+
     test_rul_results = (
         lstm_predictor.evaluate(
             y_test_lstm,
@@ -967,53 +1224,53 @@ def main():
             "test",
         )
     )
-    
+
     lstm_predictor.save_results(
         test_rul_results
     )
-    
+
     # ----------------------------------------------------------
     # Test Figures
     # ----------------------------------------------------------
-    
+
     lstm_predictor.plot_predictions(
         y_test_lstm,
         test_predictions_rul,
         "test",
     )
-    
+
     lstm_predictor.plot_error_distribution(
         y_test_lstm,
         test_predictions_rul,
         "test",
     )
-    
+
     lstm_predictor.plot_actual_vs_predicted(
         y_test_lstm,
         test_predictions_rul,
         "test",
     )
-    
+
     # ----------------------------------------------------------
     # Inference Performance
     # ----------------------------------------------------------
-    
+
     lstm_inference_results = (
         lstm_predictor.measure_inference_time(
             X_test_lstm
         )
     )
-    
+
     # ----------------------------------------------------------
     # Save Model
     # ----------------------------------------------------------
-    
+
     lstm_predictor.save_model()
-    
+
     print(
         "\n✓ LSTM RUL Prediction completed."
     )
-    
+
 
     # ======================================================
     # FINAL PIPELINE SUMMARY
