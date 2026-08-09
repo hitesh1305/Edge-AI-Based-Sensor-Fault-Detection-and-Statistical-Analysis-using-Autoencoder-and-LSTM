@@ -271,7 +271,8 @@ def main():
 
     X_train, y_train, metadata_train = (
         window_generator.generate(
-            train_df
+            train_df,
+            split_name="train"
         )
     )
 
@@ -283,7 +284,8 @@ def main():
 
     X_validation, y_validation, metadata_validation = (
         window_generator.generate(
-            validation_df
+            validation_df,
+            split_name="validation"
         )
     )
 
@@ -295,7 +297,8 @@ def main():
 
     X_test, y_test, metadata_test = (
         window_generator.generate(
-            test_df
+            test_df,
+            split_name="test"
         )
     )
 
