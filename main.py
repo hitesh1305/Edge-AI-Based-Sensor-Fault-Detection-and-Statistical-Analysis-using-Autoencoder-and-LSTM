@@ -46,6 +46,8 @@ from src.statistics.zscore_detector import ZScoreDetector
 from src.features.windowing import WindowGenerator
 from src.features.wavelet_features import WaveletFeatureExtractor
 
+from src.models.isolation_forest import IsolationForestDetector
+
 
 def main():
 
@@ -408,6 +410,135 @@ def main():
         )
     )
 
+    # ==========================================================
+    # STEP 11 : ISOLATION FOREST ANOMALY DETECTION
+    # ==========================================================
+    
+    print("\n" + "=" * 70)
+    print("STEP 11 : ISOLATION FOREST ANOMALY DETECTION")
+    print("=" * 70)
+    
+    isolation_forest = IsolationForestDetector(
+        n_estimators=200,
+        max_samples="auto",
+        contamination="auto",
+        max_features=1.0,
+        random_state=42,
+        n_jobs=-1
+    )
+    
+    # ----------------------------------------------------------
+    # TRAIN
+    # ----------------------------------------------------------
+    
+    training_time = isolation_forest.fit(
+        wavelet_train
+    )
+    
+    # ----------------------------------------------------------
+    # Validation scores
+    # ----------------------------------------------------------
+    
+    validation_scores = (
+        isolation_forest.anomaly_scores(
+            wavelet_validation
+        )
+    )
+    
+    validation_labels = (
+        isolation_forest.create_rul_labels(
+            metadata_validation,
+            rul_threshold=30
+        )
+    )
+    
+    isolation_forest.select_threshold(
+        validation_scores,
+        validation_labels
+    )
+    
+    validation_predictions = (
+        validation_scores
+        >= isolation_forest.threshold
+    ).astype(int)
+    
+    validation_results = (
+        isolation_forest.evaluate(
+            validation_labels,
+            validation_predictions,
+            validation_scores,
+            "validation"
+        )
+    )
+    
+    isolation_forest.save_results(
+        validation_results
+    )
+    
+    # ----------------------------------------------------------
+    # Test
+    # ----------------------------------------------------------
+    
+    test_predictions, test_scores = (
+        isolation_forest.predict(
+            wavelet_test
+        )
+    )
+    
+    test_labels = (
+        isolation_forest.create_rul_labels(
+            metadata_test,
+            rul_threshold=30
+        )
+    )
+    
+    test_results = (
+        isolation_forest.evaluate(
+            test_labels,
+            test_predictions,
+            test_scores,
+            "test"
+        )
+    )
+    
+    isolation_forest.save_results(
+        test_results
+    )
+    
+    # ----------------------------------------------------------
+    # Figures
+    # ----------------------------------------------------------
+    
+    isolation_forest.plot_confusion_matrix(
+        test_labels,
+        test_predictions,
+        "test"
+    )
+    
+    isolation_forest.plot_roc_curve(
+        test_labels,
+        test_scores,
+        "test"
+    )
+    
+    isolation_forest.plot_score_distribution(
+        test_scores,
+        test_labels,
+        "test",
+        isolation_forest.threshold
+    )
+    
+    # ----------------------------------------------------------
+    # Inference
+    # ----------------------------------------------------------
+    
+    inference_results = (
+        isolation_forest.measure_inference_time(
+            wavelet_test
+        )
+    )
+    
+    print("\n✓ Isolation Forest completed.")
     # ======================================================
     # FINAL PIPELINE SUMMARY
     # ======================================================
