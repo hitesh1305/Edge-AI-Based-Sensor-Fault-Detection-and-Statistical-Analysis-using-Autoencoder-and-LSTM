@@ -234,15 +234,18 @@ def main():
     kalman_test = KalmanFilterEstimator()
 
     train_df = kalman_train.apply(
-        train_df
+        train_df,
+        split_name="train"
     )
 
     validation_df = kalman_validation.apply(
-        validation_df
+        validation_df,
+        split_name="validation"
     )
 
     test_df = kalman_test.apply(
-        test_df
+        test_df,
+        split_name="test"
     )
 
     print("\n✓ Kalman filtering completed for all splits.")
