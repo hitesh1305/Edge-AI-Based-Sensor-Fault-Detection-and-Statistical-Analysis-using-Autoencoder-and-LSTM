@@ -4,6 +4,12 @@ Edge AI-Based Fault Detection and Prediction
 using NASA C-MAPSS Dataset
 """
 
+import matplotlib
+
+matplotlib.use("Agg")
+
+import numpy as np
+
 from configs.config import (
     TRAIN_FILE,
     TEST_FILE,
@@ -47,6 +53,8 @@ from src.features.windowing import WindowGenerator
 from src.features.wavelet_features import WaveletFeatureExtractor
 
 from src.models.isolation_forest import IsolationForestDetector
+
+from src.models.autoencoder import AutoencoderDetector
 
 
 def main():
@@ -413,11 +421,11 @@ def main():
     # ==========================================================
     # STEP 11 : ISOLATION FOREST ANOMALY DETECTION
     # ==========================================================
-    
+
     print("\n" + "=" * 70)
     print("STEP 11 : ISOLATION FOREST ANOMALY DETECTION")
     print("=" * 70)
-    
+
     isolation_forest = IsolationForestDetector(
         n_estimators=200,
         max_samples="auto",
@@ -426,42 +434,42 @@ def main():
         random_state=42,
         n_jobs=-1
     )
-    
+
     # ----------------------------------------------------------
     # TRAIN
     # ----------------------------------------------------------
-    
+
     training_time = isolation_forest.fit(
         wavelet_train
     )
-    
+
     # ----------------------------------------------------------
     # Validation scores
     # ----------------------------------------------------------
-    
+
     validation_scores = (
         isolation_forest.anomaly_scores(
             wavelet_validation
         )
     )
-    
+
     validation_labels = (
         isolation_forest.create_rul_labels(
             metadata_validation,
             rul_threshold=30
         )
     )
-    
+
     isolation_forest.select_threshold(
         validation_scores,
         validation_labels
     )
-    
+
     validation_predictions = (
         validation_scores
         >= isolation_forest.threshold
     ).astype(int)
-    
+
     validation_results = (
         isolation_forest.evaluate(
             validation_labels,
@@ -470,28 +478,28 @@ def main():
             "validation"
         )
     )
-    
+
     isolation_forest.save_results(
         validation_results
     )
-    
+
     # ----------------------------------------------------------
     # Test
     # ----------------------------------------------------------
-    
+
     test_predictions, test_scores = (
         isolation_forest.predict(
             wavelet_test
         )
     )
-    
+
     test_labels = (
         isolation_forest.create_rul_labels(
             metadata_test,
             rul_threshold=30
         )
     )
-    
+
     test_results = (
         isolation_forest.evaluate(
             test_labels,
@@ -500,45 +508,262 @@ def main():
             "test"
         )
     )
-    
+
     isolation_forest.save_results(
         test_results
     )
-    
+
     # ----------------------------------------------------------
     # Figures
     # ----------------------------------------------------------
-    
+
     isolation_forest.plot_confusion_matrix(
         test_labels,
         test_predictions,
         "test"
     )
-    
+
     isolation_forest.plot_roc_curve(
         test_labels,
         test_scores,
         "test"
     )
-    
+
     isolation_forest.plot_score_distribution(
         test_scores,
         test_labels,
         "test",
         isolation_forest.threshold
     )
-    
+
     # ----------------------------------------------------------
     # Inference
     # ----------------------------------------------------------
-    
+
     inference_results = (
         isolation_forest.measure_inference_time(
             wavelet_test
         )
     )
-    
+
     print("\n✓ Isolation Forest completed.")
+    
+    # ==========================================================
+    # STEP 12 : DENSE AUTOENCODER
+    # ==========================================================
+
+    print("\n" + "=" * 70)
+    print("STEP 12 : DENSE AUTOENCODER ANOMALY DETECTION")
+    print("=" * 70)
+
+    # ----------------------------------------------------------
+    # Evaluation labels
+    # ----------------------------------------------------------
+
+    train_labels = (
+        metadata_train["target_rul"]
+        <= 30
+    ).astype(int).to_numpy()
+
+    validation_labels = (
+        metadata_validation["target_rul"]
+        <= 30
+    ).astype(int).to_numpy()
+
+    test_labels = (
+        metadata_test["target_rul"]
+        <= 30
+    ).astype(int).to_numpy()
+
+    # ----------------------------------------------------------
+    # Flatten Wavelet Features
+    # ----------------------------------------------------------
+
+    X_wavelet_train = (
+        wavelet_train
+        .drop(columns=["window_id"])
+        .to_numpy(dtype=np.float32)
+    )
+
+    X_wavelet_validation = (
+        wavelet_validation
+        .drop(columns=["window_id"])
+        .to_numpy(dtype=np.float32)
+    )
+
+    X_wavelet_test = (
+        wavelet_test
+        .drop(columns=["window_id"])
+        .to_numpy(dtype=np.float32)
+    )
+
+    # ----------------------------------------------------------
+    # Train ONLY on healthy training samples
+    # ----------------------------------------------------------
+
+    healthy_train_mask = (
+        train_labels == 0
+    )
+
+    healthy_validation_mask = (
+        validation_labels == 0
+    )
+
+    X_wavelet_train_healthy = (
+        X_wavelet_train[
+            healthy_train_mask
+        ]
+    )
+
+    X_wavelet_validation_healthy = (
+        X_wavelet_validation[
+            healthy_validation_mask
+        ]
+    )
+
+    print(
+        f"\nHealthy Training Samples   : "
+        f"{len(X_wavelet_train_healthy)}"
+    )
+
+    print(
+        f"Healthy Validation Samples : "
+        f"{len(X_wavelet_validation_healthy)}"
+    )
+
+    # ----------------------------------------------------------
+    # Create Autoencoder
+    # ----------------------------------------------------------
+
+    autoencoder = AutoencoderDetector(
+        input_dim=X_wavelet_train.shape[1],
+        encoding_dim=64,
+        learning_rate=0.001,
+        batch_size=128,
+        epochs=50
+    )
+
+    # ----------------------------------------------------------
+    # Train
+    # ----------------------------------------------------------
+
+    history, autoencoder_training_time = (
+        autoencoder.fit(
+            X_wavelet_train_healthy,
+            X_wavelet_validation_healthy
+        )
+    )
+
+    # ----------------------------------------------------------
+    # Training History
+    # ----------------------------------------------------------
+
+    autoencoder.plot_training_history(
+        history
+    )
+
+    # ----------------------------------------------------------
+    # Validation Reconstruction Error
+    # ----------------------------------------------------------
+
+    validation_errors = (
+        autoencoder.reconstruction_errors(
+            X_wavelet_validation
+        )
+    )
+
+    # ----------------------------------------------------------
+    # Select Threshold ONLY on Validation
+    # ----------------------------------------------------------
+
+    autoencoder.select_threshold(
+        validation_errors,
+        validation_labels
+    )
+
+    validation_predictions = (
+        validation_errors
+        >= autoencoder.threshold
+    ).astype(int)
+
+    validation_results = (
+        autoencoder.evaluate(
+            validation_labels,
+            validation_predictions,
+            validation_errors,
+            "validation"
+        )
+    )
+
+    autoencoder.save_results(
+        validation_results
+    )
+
+    # ----------------------------------------------------------
+    # Test
+    # ----------------------------------------------------------
+
+    test_predictions, test_errors = (
+        autoencoder.predict(
+            X_wavelet_test
+        )
+    )
+
+    test_results = (
+        autoencoder.evaluate(
+            test_labels,
+            test_predictions,
+            test_errors,
+            "test"
+        )
+    )
+
+    autoencoder.save_results(
+        test_results
+    )
+
+    # ----------------------------------------------------------
+    # Required Paper Figures
+    # ----------------------------------------------------------
+
+    autoencoder.plot_error_distribution(
+        test_errors,
+        test_labels,
+        autoencoder.threshold,
+        "test"
+    )
+
+    autoencoder.plot_confusion_matrix(
+        test_labels,
+        test_predictions,
+        "test"
+    )
+
+    autoencoder.plot_roc_curve(
+        test_labels,
+        test_errors,
+        "test"
+    )
+
+    # ----------------------------------------------------------
+    # Inference Time
+    # ----------------------------------------------------------
+
+    autoencoder_inference = (
+        autoencoder.measure_inference_time(
+            X_wavelet_test
+        )
+    )
+
+    # ----------------------------------------------------------
+    # Save Model
+    # ----------------------------------------------------------
+
+    autoencoder.save_model()
+
+    print("\n✓ Dense Autoencoder completed.")
+
+
     # ======================================================
     # FINAL PIPELINE SUMMARY
     # ======================================================

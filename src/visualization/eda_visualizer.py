@@ -130,4 +130,4 @@ class EDAVisualizer:
             bbox_inches="tight"
         )
 
-        plt.show()
+        plt.close()
