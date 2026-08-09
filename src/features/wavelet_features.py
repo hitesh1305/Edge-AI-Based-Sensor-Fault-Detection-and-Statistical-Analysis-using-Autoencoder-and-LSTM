@@ -1,14 +1,12 @@
 """
 Wavelet-Based Feature Extraction
 
-Extracts time-domain and wavelet-domain features
-from each sliding window.
+Extracts time-domain and wavelet-domain features from
+sliding-window sensor sequences.
 
-The extraction is performed independently for every
-window to avoid temporal information leakage.
+Train, validation, and test outputs are saved separately
+to prevent accidental overwriting.
 """
-
-from pathlib import Path
 
 import numpy as np
 import pandas as pd
@@ -24,10 +22,6 @@ from configs.config import (
 
 
 class WaveletFeatureExtractor:
-    """
-    Extracts fixed-length statistical and wavelet features
-    from sliding-window sensor sequences.
-    """
 
     def __init__(
         self,
@@ -36,41 +30,33 @@ class WaveletFeatureExtractor:
     ):
         self.wavelet = wavelet
         self.level = level
+        self._last_X = None
 
     # ======================================================
-    # Basic Statistical Features
+    # Statistical Features
     # ======================================================
 
     @staticmethod
     def _statistical_features(signal):
-        """
-        Calculate time-domain statistical features.
-        """
 
-        signal = np.asarray(signal, dtype=np.float64)
-
-        mean = np.mean(signal)
-
-        std = np.std(signal)
-
-        variance = np.var(signal)
-
-        rms = np.sqrt(np.mean(signal ** 2))
-
-        maximum = np.max(signal)
-
-        minimum = np.min(signal)
-
-        peak_to_peak = maximum - minimum
+        signal = np.asarray(
+            signal,
+            dtype=np.float64
+        )
 
         return {
-            "mean": mean,
-            "std": std,
-            "variance": variance,
-            "rms": rms,
-            "max": maximum,
-            "min": minimum,
-            "peak_to_peak": peak_to_peak,
+            "mean": np.mean(signal),
+            "std": np.std(signal),
+            "variance": np.var(signal),
+            "rms": np.sqrt(
+                np.mean(signal ** 2)
+            ),
+            "max": np.max(signal),
+            "min": np.min(signal),
+            "peak_to_peak": (
+                np.max(signal)
+                - np.min(signal)
+            ),
         }
 
     # ======================================================
@@ -79,14 +65,14 @@ class WaveletFeatureExtractor:
 
     @staticmethod
     def _wavelet_energy(coefficients):
-        """
-        Calculate total wavelet energy.
-        """
 
         energy = 0.0
 
         for coefficient in coefficients:
-            energy += np.sum(np.square(coefficient))
+
+            energy += np.sum(
+                np.square(coefficient)
+            )
 
         return energy
 
@@ -96,40 +82,48 @@ class WaveletFeatureExtractor:
 
     @staticmethod
     def _wavelet_entropy(coefficients):
-        """
-        Calculate normalized Shannon entropy of wavelet
-        coefficient energy distribution.
-        """
 
         energies = []
 
         for coefficient in coefficients:
 
-            energy = np.square(coefficient)
+            energy = np.square(
+                coefficient
+            )
 
-            energies.extend(energy.tolist())
+            energies.extend(
+                energy.tolist()
+            )
 
-        energies = np.asarray(energies, dtype=np.float64)
+        energies = np.asarray(
+            energies,
+            dtype=np.float64
+        )
 
-        total_energy = np.sum(energies)
+        total_energy = np.sum(
+            energies
+        )
 
         if total_energy <= 0:
             return 0.0
 
-        probabilities = energies / total_energy
+        probabilities = (
+            energies / total_energy
+        )
 
         probabilities = probabilities[
             probabilities > 0
         ]
 
         entropy = -np.sum(
-            probabilities * np.log2(probabilities)
+            probabilities
+            * np.log2(probabilities)
         )
 
         return entropy
 
     # ======================================================
-    # Single Sensor Feature Extraction
+    # Single Sensor
     # ======================================================
 
     def _extract_sensor_features(
@@ -137,9 +131,6 @@ class WaveletFeatureExtractor:
         signal,
         prefix
     ):
-        """
-        Extract features from one sensor within one window.
-        """
 
         features = {}
 
@@ -147,7 +138,11 @@ class WaveletFeatureExtractor:
         # Time-domain features
         # --------------------------------------------------
 
-        statistics = self._statistical_features(signal)
+        statistics = (
+            self._statistical_features(
+                signal
+            )
+        )
 
         for name, value in statistics.items():
 
@@ -159,11 +154,15 @@ class WaveletFeatureExtractor:
         # Wavelet decomposition
         # --------------------------------------------------
 
-        wavelet = pywt.Wavelet(self.wavelet)
+        wavelet = pywt.Wavelet(
+            self.wavelet
+        )
 
-        maximum_level = pywt.dwt_max_level(
-            data_len=len(signal),
-            filter_len=wavelet.dec_len
+        maximum_level = (
+            pywt.dwt_max_level(
+                data_len=len(signal),
+                filter_len=wavelet.dec_len
+            )
         )
 
         level = min(
@@ -179,67 +178,68 @@ class WaveletFeatureExtractor:
         )
 
         # --------------------------------------------------
-        # Wavelet features
+        # Wavelet-domain features
         # --------------------------------------------------
-
-        wavelet_energy = self._wavelet_energy(
-            coefficients
-        )
-
-        wavelet_entropy = self._wavelet_entropy(
-            coefficients
-        )
 
         features[
             f"{prefix}_wavelet_energy"
-        ] = wavelet_energy
+        ] = self._wavelet_energy(
+            coefficients
+        )
 
         features[
             f"{prefix}_wavelet_entropy"
-        ] = wavelet_entropy
+        ] = self._wavelet_entropy(
+            coefficients
+        )
 
         return features
 
     # ======================================================
-    # Extract Features from All Windows
+    # Extract Features
     # ======================================================
 
     def extract(
         self,
         X,
-        sensor_columns
+        sensor_columns,
+        split_name="dataset"
     ):
-        """
-        Parameters
-        ----------
-        X :
-            Sliding-window array with shape:
-
-            (samples, timesteps, features)
-
-        sensor_columns :
-            Names of sensor features contained in X.
-
-        Returns
-        -------
-        feature_df :
-            Fixed-length feature matrix.
-        """
 
         print("\n" + "=" * 70)
-        print("WAVELET FEATURE EXTRACTION")
+        print(
+            f"WAVELET FEATURE EXTRACTION - "
+            f"{split_name.upper()}"
+        )
         print("=" * 70)
 
-        print(f"Wavelet : {self.wavelet}")
-        print(f"Level   : {self.level}")
+        print(
+            f"Wavelet   : {self.wavelet}"
+        )
 
-        print(f"Windows : {X.shape[0]}")
-        print(f"Timesteps : {X.shape[1]}")
-        print(f"Sensors : {len(sensor_columns)}")
+        print(
+            f"Level     : {self.level}"
+        )
+
+        print(
+            f"Windows   : {X.shape[0]}"
+        )
+
+        print(
+            f"Timesteps : {X.shape[1]}"
+        )
+
+        print(
+            f"Sensors   : {len(sensor_columns)}"
+        )
 
         feature_rows = []
 
         total_windows = len(X)
+
+        # --------------------------------------------------
+        # Process every window independently
+        # --------------------------------------------------
 
         for window_index, window in enumerate(X):
 
@@ -251,25 +251,28 @@ class WaveletFeatureExtractor:
                 sensor_columns
             ):
 
-                signal = window[:, sensor_index]
-
-                prefix = sensor
+                signal = window[
+                    :,
+                    sensor_index
+                ]
 
                 sensor_features = (
                     self._extract_sensor_features(
                         signal,
-                        prefix
+                        sensor
                     )
                 )
 
-                row.update(sensor_features)
+                row.update(
+                    sensor_features
+                )
 
             feature_rows.append(row)
 
-            # Progress indicator
             if (
                 window_index % 1000 == 0
-                or window_index == total_windows - 1
+                or window_index
+                == total_windows - 1
             ):
 
                 print(
@@ -278,10 +281,12 @@ class WaveletFeatureExtractor:
                     f"{total_windows} windows..."
                 )
 
-        feature_df = pd.DataFrame(feature_rows)
+        feature_df = pd.DataFrame(
+            feature_rows
+        )
 
         # ==================================================
-        # Save Feature Matrix
+        # Save Split-Specific Feature Matrix
         # ==================================================
 
         TABLES_DIR.mkdir(
@@ -289,8 +294,13 @@ class WaveletFeatureExtractor:
             exist_ok=True
         )
 
+        output_file = (
+            TABLES_DIR
+            / f"wavelet_features_{split_name}.csv"
+        )
+
         feature_df.to_csv(
-            TABLES_DIR / "wavelet_features.csv",
+            output_file,
             index=False
         )
 
@@ -313,19 +323,25 @@ class WaveletFeatureExtractor:
         print("-" * 70)
 
         # ==================================================
-        # Generate Visualizations
+        # Visualizations
         # ==================================================
 
         self._create_visualizations(
             feature_df,
-            sensor_columns
+            sensor_columns,
+            split_name
         )
 
-        print("\n✓ Wavelet Feature Extraction Completed")
+        print(
+            "\n✓ Wavelet Feature Extraction Completed"
+        )
 
         print(
-            f"✓ Feature matrix saved to "
-            f"{TABLES_DIR / 'wavelet_features.csv'}"
+            f"✓ Feature matrix saved:"
+        )
+
+        print(
+            f"  {output_file}"
         )
 
         return feature_df
@@ -337,11 +353,9 @@ class WaveletFeatureExtractor:
     def _create_visualizations(
         self,
         feature_df,
-        sensor_columns
+        sensor_columns,
+        split_name
     ):
-        """
-        Generate representative wavelet feature plots.
-        """
 
         FIGURES_DIR.mkdir(
             parents=True,
@@ -349,19 +363,23 @@ class WaveletFeatureExtractor:
         )
 
         # --------------------------------------------------
-        # Wavelet Energy Distribution
+        # Wavelet Energy
         # --------------------------------------------------
 
         energy_columns = [
             column
             for column in feature_df.columns
-            if column.endswith("_wavelet_energy")
+            if column.endswith(
+                "_wavelet_energy"
+            )
         ]
 
         if energy_columns:
 
             energy_values = (
-                feature_df[energy_columns]
+                feature_df[
+                    energy_columns
+                ]
                 .mean()
                 .sort_values(
                     ascending=False
@@ -377,12 +395,16 @@ class WaveletFeatureExtractor:
             )
 
             plt.title(
-                "Mean Wavelet Energy by Sensor"
+                f"Mean Wavelet Energy "
+                f"by Sensor - "
+                f"{split_name.capitalize()}"
             )
 
             plt.xlabel("Sensor")
 
-            plt.ylabel("Mean Wavelet Energy")
+            plt.ylabel(
+                "Mean Wavelet Energy"
+            )
 
             plt.xticks(
                 rotation=45,
@@ -397,27 +419,33 @@ class WaveletFeatureExtractor:
             plt.tight_layout()
 
             plt.savefig(
-                FIGURES_DIR /
-                "wavelet_energy_distribution.png",
-                dpi=300
+                FIGURES_DIR
+                / f"wavelet_energy_"
+                  f"{split_name}.png",
+                dpi=300,
+                bbox_inches="tight"
             )
 
             plt.close()
 
         # --------------------------------------------------
-        # Wavelet Entropy Distribution
+        # Wavelet Entropy
         # --------------------------------------------------
 
         entropy_columns = [
             column
             for column in feature_df.columns
-            if column.endswith("_wavelet_entropy")
+            if column.endswith(
+                "_wavelet_entropy"
+            )
         ]
 
         if entropy_columns:
 
             entropy_values = (
-                feature_df[entropy_columns]
+                feature_df[
+                    entropy_columns
+                ]
                 .mean()
                 .sort_values(
                     ascending=False
@@ -433,12 +461,16 @@ class WaveletFeatureExtractor:
             )
 
             plt.title(
-                "Mean Wavelet Entropy by Sensor"
+                f"Mean Wavelet Entropy "
+                f"by Sensor - "
+                f"{split_name.capitalize()}"
             )
 
             plt.xlabel("Sensor")
 
-            plt.ylabel("Mean Wavelet Entropy")
+            plt.ylabel(
+                "Mean Wavelet Entropy"
+            )
 
             plt.xticks(
                 rotation=45,
@@ -453,43 +485,53 @@ class WaveletFeatureExtractor:
             plt.tight_layout()
 
             plt.savefig(
-                FIGURES_DIR /
-                "wavelet_entropy_distribution.png",
-                dpi=300
+                FIGURES_DIR
+                / f"wavelet_entropy_"
+                  f"{split_name}.png",
+                dpi=300,
+                bbox_inches="tight"
             )
 
             plt.close()
 
         # --------------------------------------------------
-        # Representative Sensor Wavelet Decomposition
+        # Representative Decomposition
         # --------------------------------------------------
 
-        if len(sensor_columns) > 0:
+        if (
+            self._last_X is not None
+            and len(sensor_columns) > 0
+            and len(self._last_X) > 0
+        ):
 
             sensor_index = 0
 
-            signal = (
-                np.asarray(
-                    self._last_X[
-                        0,
-                        :,
-                        sensor_index
-                    ]
+            signal = self._last_X[
+                0,
+                :,
+                sensor_index
+            ]
+
+            wavelet = pywt.Wavelet(
+                self.wavelet
+            )
+
+            maximum_level = (
+                pywt.dwt_max_level(
+                    data_len=len(signal),
+                    filter_len=wavelet.dec_len
                 )
+            )
+
+            level = min(
+                self.level,
+                maximum_level
             )
 
             coefficients = pywt.wavedec(
                 signal,
                 self.wavelet,
-                level=min(
-                    self.level,
-                    pywt.dwt_max_level(
-                        len(signal),
-                        pywt.Wavelet(
-                            self.wavelet
-                        ).dec_len
-                    )
-                ),
+                level=level,
                 mode="symmetric"
             )
 
@@ -508,12 +550,17 @@ class WaveletFeatureExtractor:
 
             plt.title(
                 f"Wavelet Decomposition - "
-                f"{sensor_columns[0]}"
+                f"{sensor_columns[0]} - "
+                f"{split_name.capitalize()}"
             )
 
-            plt.xlabel("Coefficient Index")
+            plt.xlabel(
+                "Coefficient Index"
+            )
 
-            plt.ylabel("Amplitude")
+            plt.ylabel(
+                "Amplitude"
+            )
 
             plt.legend()
 
@@ -524,20 +571,19 @@ class WaveletFeatureExtractor:
             plt.tight_layout()
 
             plt.savefig(
-                FIGURES_DIR /
-                "wavelet_coefficients.png",
-                dpi=300
+                FIGURES_DIR
+                / f"wavelet_coefficients_"
+                  f"{split_name}.png",
+                dpi=300,
+                bbox_inches="tight"
             )
 
             plt.close()
 
     # ======================================================
-    # Internal Storage
+    # Store Input
     # ======================================================
 
     def set_input(self, X):
-        """
-        Store input windows for visualization.
-        """
 
         self._last_X = X

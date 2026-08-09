@@ -359,7 +359,8 @@ def main():
     wavelet_train = (
         wavelet_train_extractor.extract(
             X_train,
-            sensor_columns
+            sensor_columns,
+            split_name="train"
         )
     )
 
@@ -380,7 +381,8 @@ def main():
     wavelet_validation = (
         wavelet_validation_extractor.extract(
             X_validation,
-            sensor_columns
+            sensor_columns,
+            split_name="validation"
         )
     )
 
@@ -401,7 +403,8 @@ def main():
     wavelet_test = (
         wavelet_test_extractor.extract(
             X_test,
-            sensor_columns
+            sensor_columns,
+            split_name="test"
         )
     )
 
