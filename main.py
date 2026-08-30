@@ -17,6 +17,19 @@ from configs.config import (
     WINDOW_SIZE,
 )
 
+from sklearn.preprocessing import StandardScaler
+import joblib
+
+from sklearn.metrics import (
+    roc_auc_score,
+    accuracy_score,
+    precision_score,
+    recall_score,
+    f1_score,
+    confusion_matrix,
+    roc_curve,
+)
+    
 # ==========================================================
 # Data
 # ==========================================================
@@ -552,7 +565,7 @@ def main():
     print("\n✓ Isolation Forest completed.")
     
     # ==========================================================
-    # STEP 12 : DENSE AUTOENCODER
+    # STEP 12 : DENSE AUTOENCODER ANOMALY DETECTION
     # ==========================================================
 
     print("\n" + "=" * 70)
@@ -601,7 +614,7 @@ def main():
     )
 
     # ----------------------------------------------------------
-    # Train ONLY on healthy training samples
+    # Healthy sample masks
     # ----------------------------------------------------------
 
     healthy_train_mask = (
@@ -612,6 +625,35 @@ def main():
         validation_labels == 0
     )
 
+    print(
+        f"\nTotal Training Windows      : "
+        f"{len(X_wavelet_train)}"
+    )
+
+    print(
+        f"Healthy Training Windows    : "
+        f"{np.sum(healthy_train_mask)}"
+    )
+
+    print(
+        f"Total Validation Windows    : "
+        f"{len(X_wavelet_validation)}"
+    )
+
+    print(
+        f"Healthy Validation Windows  : "
+        f"{np.sum(healthy_validation_mask)}"
+    )
+
+    print(
+        f"Total Test Windows          : "
+        f"{len(X_wavelet_test)}"
+    )
+
+    # ----------------------------------------------------------
+    # Extract healthy training samples
+    # ----------------------------------------------------------
+
     X_wavelet_train_healthy = (
         X_wavelet_train[
             healthy_train_mask
@@ -620,6 +662,76 @@ def main():
 
     X_wavelet_validation_healthy = (
         X_wavelet_validation[
+            healthy_validation_mask
+        ]
+    )
+
+    # ----------------------------------------------------------
+    # Wavelet Feature Normalization
+    # ----------------------------------------------------------
+    #
+    # IMPORTANT:
+    # The scaler is fitted ONLY on healthy training data.
+    #
+    # Validation and test data are transformed using the
+    # training-fitted scaler.
+    #
+    # This prevents test information from influencing training.
+    # ----------------------------------------------------------
+
+    
+
+    wavelet_scaler = StandardScaler()
+
+    wavelet_scaler.fit(
+        X_wavelet_train_healthy
+    )
+
+    X_wavelet_train_scaled = (
+        wavelet_scaler.transform(
+            X_wavelet_train
+        )
+    )
+
+    X_wavelet_validation_scaled = (
+        wavelet_scaler.transform(
+            X_wavelet_validation
+        )
+    )
+
+    X_wavelet_test_scaled = (
+        wavelet_scaler.transform(
+            X_wavelet_test
+        )
+    )
+
+    joblib.dump(
+        wavelet_scaler,
+        "output/models/wavelet_scaler.pkl"
+    )
+
+    print(
+        "\n✓ Wavelet scaler fitted on "
+        "healthy training data."
+    )
+
+    print(
+        "✓ Wavelet scaler saved to "
+        "output/models/wavelet_scaler.pkl"
+    )
+
+    # ----------------------------------------------------------
+    # Select healthy scaled samples for Autoencoder training
+    # ----------------------------------------------------------
+
+    X_wavelet_train_healthy = (
+        X_wavelet_train_scaled[
+            healthy_train_mask
+        ]
+    )
+
+    X_wavelet_validation_healthy = (
+        X_wavelet_validation_scaled[
             healthy_validation_mask
         ]
     )
@@ -639,9 +751,9 @@ def main():
     # ----------------------------------------------------------
 
     autoencoder = AutoencoderDetector(
-        input_dim=X_wavelet_train.shape[1],
+        input_dim=X_wavelet_train_scaled.shape[1],
         encoding_dim=64,
-        learning_rate=0.001,
+        learning_rate=0.0005,
         batch_size=128,
         epochs=50
     )
@@ -671,7 +783,7 @@ def main():
 
     validation_errors = (
         autoencoder.reconstruction_errors(
-            X_wavelet_validation
+            X_wavelet_validation_scaled
         )
     )
 
@@ -708,7 +820,7 @@ def main():
 
     test_predictions, test_errors = (
         autoencoder.predict(
-            X_wavelet_test
+            X_wavelet_test_scaled
         )
     )
 
@@ -754,7 +866,7 @@ def main():
 
     autoencoder_inference = (
         autoencoder.measure_inference_time(
-            X_wavelet_test
+            X_wavelet_test_scaled
         )
     )
 
@@ -764,202 +876,407 @@ def main():
 
     autoencoder.save_model()
 
-    print("\n✓ Dense Autoencoder completed.")
-
-
+    print(
+        "\n✓ Dense Autoencoder completed."
+    )
     # ==========================================================
     # STEP 13 : PROPOSED FAULT SCORE FUSION
     # ==========================================================
-
+    
     print("\n" + "=" * 70)
     print("STEP 13 : PROPOSED FAULT SCORE FUSION")
     print("=" * 70)
-
+    
     """
     Research Design
     ---------------
-    Isolation Forest and Dense Autoencoder provide complementary
-    anomaly evidence.
-
+    
+    The proposed fault detector combines two complementary anomaly
+    indicators:
+    
+    1. Isolation Forest anomaly score
+    2. Dense Autoencoder reconstruction error
+    
     Isolation Forest:
-        Detects deviations in the wavelet feature space.
-
+        Detects deviations in the wavelet-feature space.
+    
     Dense Autoencoder:
         Detects abnormal reconstruction behavior.
-
-    Their continuous anomaly scores are normalized using
-    VALIDATION data only and combined using a 50:50 weighted
-    fusion.
-
-    The fusion threshold is selected using VALIDATION F1.
-
-    The TEST set is used only for final evaluation.
+    
+    Both scores are first aligned so that:
+    
+        Higher score = higher probability of fault/anomaly
+    
+    The score normalization parameters are learned using VALIDATION
+    data only.
+    
+    The normalized scores are then combined using a weighted fusion:
+    
+        Fused Score =
+            w_IF * IF_Score
+            +
+            w_AE * AE_Score
+    
+    The fusion threshold is selected using validation F1.
+    
+    The TEST set is used only once for final evaluation.
+    
+    IMPORTANT:
+        Isolation Forest score direction is determined from the
+        validation ROC-AUC rather than blindly applying (1-score).
     """
-
-    # ----------------------------------------------------------
-    # Create Fusion Model
-    # ----------------------------------------------------------
-
+    
+    
+    # ==========================================================
+    # 1. CREATE FUSION MODEL
+    # ==========================================================
+    
     fault_fusion = FaultScoreFusion(
         isolation_weight=0.5,
         autoencoder_weight=0.5
     )
-
+    
     print("\nFusion Weights")
     print(
         f"Isolation Forest : "
         f"{fault_fusion.isolation_weight:.2f}"
     )
-
+    
     print(
         f"Autoencoder      : "
         f"{fault_fusion.autoencoder_weight:.2f}"
     )
-
-    # ----------------------------------------------------------
-    # VALIDATION SCORE NORMALIZATION
-    # ----------------------------------------------------------
+    
+    
+    # ==========================================================
+    # 2. CONVERT INPUTS TO NUMPY ARRAYS
+    # ==========================================================
+    
+    validation_if_scores = np.asarray(
+        validation_scores,
+        dtype=np.float64
+    ).reshape(-1)
+    
+    validation_ae_errors = np.asarray(
+        validation_errors,
+        dtype=np.float64
+    ).reshape(-1)
+    
+    validation_labels_array = np.asarray(
+        validation_labels,
+        dtype=int
+    ).reshape(-1)
+    
+    test_if_scores = np.asarray(
+        test_scores,
+        dtype=np.float64
+    ).reshape(-1)
+    
+    test_ae_errors = np.asarray(
+        test_errors,
+        dtype=np.float64
+    ).reshape(-1)
+    
+    test_labels_array = np.asarray(
+        test_labels,
+        dtype=int
+    ).reshape(-1)
+    
+    
+    # ==========================================================
+    # 3. CHECK SCORE LENGTHS
+    # ==========================================================
+    
+    if not (
+        len(validation_if_scores)
+        == len(validation_ae_errors)
+        == len(validation_labels_array)
+    ):
+    
+        raise ValueError(
+            "Validation Isolation Forest scores, "
+            "Autoencoder errors and labels must have "
+            "the same number of samples."
+        )
+    
+    
+    if not (
+        len(test_if_scores)
+        == len(test_ae_errors)
+        == len(test_labels_array)
+    ):
+    
+        raise ValueError(
+            "Test Isolation Forest scores, "
+            "Autoencoder errors and labels must have "
+            "the same number of samples."
+        )
+    
+    
+    # ==========================================================
+    # 4. DETERMINE ISOLATION FOREST SCORE DIRECTION
+    # ==========================================================
+    #
+    # We do NOT assume the direction.
+    #
+    # The validation labels are used only to determine whether
+    # higher or lower Isolation Forest scores correspond to faults.
+    #
+    # This is legitimate calibration because validation data is
+    # explicitly reserved for model calibration and threshold
+    # selection.
+    #
+    # If:
+    #
+    #     AUC(raw score) > AUC(-raw score)
+    #
+    # then higher raw score = more anomalous.
+    #
+    # Otherwise:
+    #
+    #     higher anomaly score = -raw score
+    #
+    # ==========================================================
+    
+    try:
+    
+        if_auc_raw = roc_auc_score(
+            validation_labels_array,
+            validation_if_scores
+        )
+    
+        if_auc_reversed = roc_auc_score(
+            validation_labels_array,
+            -validation_if_scores
+        )
+    
+    except ValueError:
+    
+        raise ValueError(
+            "Validation labels must contain both normal and "
+            "fault samples for score-direction calibration."
+        )
+    
+    
+    if if_auc_reversed > if_auc_raw:
+    
+        isolation_direction = -1
+    
+        validation_if_aligned = (
+            -validation_if_scores
+        )
+    
+        direction_text = (
+            "Reversed (higher anomaly score = -raw IF score)"
+        )
+    
+    else:
+    
+        isolation_direction = 1
+    
+        validation_if_aligned = (
+            validation_if_scores
+        )
+    
+        direction_text = (
+            "Raw (higher raw IF score = higher anomaly)"
+        )
+    
+    
+    print("\n" + "=" * 70)
+    print("ISOLATION FOREST SCORE DIRECTION CALIBRATION")
+    print("=" * 70)
+    
+    print(
+        f"Validation ROC-AUC (raw)      : "
+        f"{if_auc_raw:.4f}"
+    )
+    
+    print(
+        f"Validation ROC-AUC (reversed) : "
+        f"{if_auc_reversed:.4f}"
+    )
+    
+    print(
+        f"Selected Direction            : "
+        f"{direction_text}"
+    )
+    
+    
+    # ==========================================================
+    # 5. ALIGN TEST ISOLATION FOREST SCORES
+    # ==========================================================
     #
     # IMPORTANT:
-    # The normalization parameters are learned ONLY from
-    # validation data.
+    # The direction selected using validation data is reused
+    # unchanged on the test set.
     #
-    # Test information is not used during threshold selection.
-
-    fault_fusion.fit_scaler(
-        validation_scores,
-        validation_errors
+    # No test labels are used here.
+    # ==========================================================
+    
+    test_if_aligned = (
+        isolation_direction
+        * test_if_scores
     )
-
+    
+    
+    # ==========================================================
+    # 6. VALIDATION-ONLY SCORE CALIBRATION
+    # ==========================================================
+    #
+    # The MinMaxScaler is fitted ONLY using validation scores.
+    #
+    # Test scores are transformed using the already fitted scaler.
+    #
+    # No test statistics are used to fit the scaler.
+    # ==========================================================
+    
+    fault_fusion.fit_scaler(
+        validation_if_aligned,
+        validation_ae_errors
+    )
+    
+    print("\n" + "=" * 70)
+    print("FUSION SCORE CALIBRATION")
+    print("=" * 70)
+    
+    print(
+        f"Isolation Forest calibration : "
+        f"{validation_if_aligned.min():.8f} "
+        f"to "
+        f"{validation_if_aligned.max():.8f}"
+    )
+    
+    print(
+        f"Autoencoder calibration      : "
+        f"{validation_ae_errors.min():.8f} "
+        f"to "
+        f"{validation_ae_errors.max():.8f}"
+    )
+    
+    print(
+        "\n✓ Calibration parameters learned "
+        "from validation data only."
+    )
+    
+    
+    # ==========================================================
+    # 7. NORMALIZE VALIDATION SCORES
+    # ==========================================================
+    
     (
         validation_if_normalized,
         validation_ae_normalized
     ) = fault_fusion.transform_scores(
-        validation_scores,
-        validation_errors
+        validation_if_aligned,
+        validation_ae_errors
     )
-
-    # ----------------------------------------------------------
-    # VALIDATION FUSION SCORE
-    # ----------------------------------------------------------
-
+    
+    
+    # ==========================================================
+    # 8. VALIDATION FUSION SCORE
+    # ==========================================================
+    
     validation_fused_scores = (
         fault_fusion.fuse_scores(
             validation_if_normalized,
             validation_ae_normalized
         )
     )
-
-    # ----------------------------------------------------------
-    # SELECT FUSION THRESHOLD
-    # ----------------------------------------------------------
+    
+    
+    # ==========================================================
+    # 9. VERIFY FUSION SCORE DIRECTION
+    # ==========================================================
+    
+    validation_fusion_auc = roc_auc_score(
+        validation_labels_array,
+        validation_fused_scores
+    )
+    
+    print("\n" + "=" * 70)
+    print("VALIDATION FUSION SCORE CHECK")
+    print("=" * 70)
+    
+    print(
+        f"Validation Fusion ROC-AUC : "
+        f"{validation_fusion_auc:.4f}"
+    )
+    
+    if validation_fusion_auc < 0.5:
+    
+        print(
+            "\nWARNING: Fusion ROC-AUC is below 0.50."
+        )
+    
+        print(
+            "The anomaly-score direction appears incorrect."
+        )
+    
+        raise RuntimeError(
+            "Fusion score direction is incorrect. "
+            "Check Isolation Forest and Autoencoder score definitions."
+        )
+    
+    else:
+    
+        print(
+            "✓ Fusion score direction is valid "
+            "(higher score = greater anomaly likelihood)."
+        )
+    
+    
+    # ==========================================================
+    # 10. SELECT FUSION THRESHOLD USING VALIDATION DATA
+    # ==========================================================
     #
-    # Threshold is selected ONLY using validation data.
-
+    # Threshold selection uses validation labels only.
+    #
+    # TEST DATA IS NOT USED.
+    # ==========================================================
+    
     fault_fusion.select_threshold(
         validation_fused_scores,
-        validation_labels
+        validation_labels_array
     )
-
+    
+    
+    # ==========================================================
+    # 11. VALIDATION PREDICTIONS
+    # ==========================================================
+    
     validation_fusion_predictions = (
         fault_fusion.predict(
             validation_fused_scores
         )
     )
-
-    # ----------------------------------------------------------
-    # VALIDATION EVALUATION
-    # ----------------------------------------------------------
-
+    
+    
+    # ==========================================================
+    # 12. VALIDATION EVALUATION
+    # ==========================================================
+    
     fusion_validation_results = (
         fault_fusion.evaluate(
-            validation_labels,
+            validation_labels_array,
             validation_fusion_predictions,
             validation_fused_scores,
             "validation"
         )
     )
-
-    # ----------------------------------------------------------
-    # TEST SCORE NORMALIZATION
-    # ----------------------------------------------------------
-    #
-    # The scaler fitted on validation data is reused here.
-    # No fitting is performed on test data.
-
-    (
-        test_if_normalized,
-        test_ae_normalized
-    ) = fault_fusion.transform_scores(
-        test_scores,
-        test_errors
-    )
-
-    # ----------------------------------------------------------
-    # TEST FUSION SCORE
-    # ----------------------------------------------------------
-
-    test_fused_scores = (
-        fault_fusion.fuse_scores(
-            test_if_normalized,
-            test_ae_normalized
-        )
-    )
-
-    # ----------------------------------------------------------
-    # FINAL TEST PREDICTION
-    # ----------------------------------------------------------
-    #
-    # The threshold was determined on validation data.
-    # It is NOT recalculated using the test set.
-
-    test_fusion_predictions = (
-        fault_fusion.predict(
-            test_fused_scores
-        )
-    )
-
-    # ----------------------------------------------------------
-    # FINAL TEST EVALUATION
-    # ----------------------------------------------------------
-
-    fusion_test_results = (
-        fault_fusion.evaluate(
-            test_labels,
-            test_fusion_predictions,
-            test_fused_scores,
-            "test"
-        )
-    )
-
-    # ----------------------------------------------------------
-    # SAVE RAW + NORMALIZED FUSION SCORES
-    # ----------------------------------------------------------
-
+    
+    
+    # ==========================================================
+    # 13. SAVE VALIDATION SCORES
+    # ==========================================================
+    
     fault_fusion.save_scores(
-        window_ids=metadata_test["window_id"].to_numpy(),
-        labels=test_labels,
-        isolation_scores=test_scores,
-        autoencoder_errors=test_errors,
-        isolation_normalized=test_if_normalized,
-        autoencoder_normalized=test_ae_normalized,
-        fused_scores=test_fused_scores,
-        predictions=test_fusion_predictions,
-        output_path=(
-            "output/tables/fusion/"
-            "test_anomaly_scores.csv"
-        )
-    )
-
-    # ----------------------------------------------------------
-    # SAVE VALIDATION SCORES
-    # ----------------------------------------------------------
-
-    fault_fusion.save_scores(
-        window_ids=metadata_validation["window_id"].to_numpy(),
-        labels=validation_labels,
-        isolation_scores=validation_scores,
-        autoencoder_errors=validation_errors,
+        window_ids=(
+            metadata_validation["window_id"].to_numpy()
+        ),
+        labels=validation_labels_array,
+        isolation_scores=validation_if_scores,
+        autoencoder_errors=validation_ae_errors,
         isolation_normalized=validation_if_normalized,
         autoencoder_normalized=validation_ae_normalized,
         fused_scores=validation_fused_scores,
@@ -969,59 +1286,259 @@ def main():
             "validation_anomaly_scores.csv"
         )
     )
-
-    # ----------------------------------------------------------
-    # SAVE FINAL TEST RESULTS
-    # ----------------------------------------------------------
-
+    
+    
+    # ==========================================================
+    # 14. SAVE VALIDATION RESULTS
+    # ==========================================================
+    
+    fault_fusion.save_results(
+        fusion_validation_results,
+        "output/tables/fusion/validation_results.csv"
+    )
+    
+    
+    # ==========================================================
+    # 15. TRANSFORM TEST SCORES
+    # ==========================================================
+    #
+    # IMPORTANT:
+    #
+    # The scaler is NOT fitted again.
+    #
+    # Validation calibration parameters are reused.
+    # ==========================================================
+    
+    (
+        test_if_normalized,
+        test_ae_normalized
+    ) = fault_fusion.transform_scores(
+        test_if_aligned,
+        test_ae_errors
+    )
+    
+    
+    # ==========================================================
+    # 16. TEST FUSION SCORE
+    # ==========================================================
+    
+    test_fused_scores = (
+        fault_fusion.fuse_scores(
+            test_if_normalized,
+            test_ae_normalized
+        )
+    )
+    
+    
+    # ==========================================================
+    # 17. FINAL TEST PREDICTION
+    # ==========================================================
+    #
+    # The threshold was selected using validation data.
+    #
+    # It is NOT recalculated using test data.
+    # ==========================================================
+    
+    test_fusion_predictions = (
+        fault_fusion.predict(
+            test_fused_scores
+        )
+    )
+    
+    
+    # ==========================================================
+    # 18. FINAL TEST EVALUATION
+    # ==========================================================
+    
+    fusion_test_results = (
+        fault_fusion.evaluate(
+            test_labels_array,
+            test_fusion_predictions,
+            test_fused_scores,
+            "test"
+        )
+    )
+    
+    
+    # ==========================================================
+    # 19. SAVE TEST SCORES
+    # ==========================================================
+    
+    fault_fusion.save_scores(
+        window_ids=(
+            metadata_test["window_id"].to_numpy()
+        ),
+        labels=test_labels_array,
+        isolation_scores=test_if_scores,
+        autoencoder_errors=test_ae_errors,
+        isolation_normalized=test_if_normalized,
+        autoencoder_normalized=test_ae_normalized,
+        fused_scores=test_fused_scores,
+        predictions=test_fusion_predictions,
+        output_path=(
+            "output/tables/fusion/"
+            "test_anomaly_scores.csv"
+        )
+    )
+    
+    
+    # ==========================================================
+    # 20. SAVE TEST RESULTS
+    # ==========================================================
+    
     fault_fusion.save_results(
         fusion_test_results,
         "output/tables/fusion/results.csv"
     )
-
-    # ----------------------------------------------------------
-    # CONFUSION MATRIX
-    # ----------------------------------------------------------
-
+    
+    
+    # ==========================================================
+    # 21. CONFUSION MATRIX
+    # ==========================================================
+    
     fault_fusion.plot_confusion_matrix(
-        test_labels,
+        test_labels_array,
         test_fusion_predictions,
-        "output/figures/fusion_confusion_test.png"
-    )
-
-    # ----------------------------------------------------------
-    # ROC CURVE
-    # ----------------------------------------------------------
-
-    fault_fusion.plot_roc_curve(
-        test_labels,
-        test_fused_scores,
-        "output/figures/fusion_roc_test.png"
-    )
-
-    # ----------------------------------------------------------
-    # SCORE DISTRIBUTION
-    # ----------------------------------------------------------
-
-    fault_fusion.plot_score_distribution(
-        test_fused_scores,
-        test_labels,
-        fault_fusion.threshold,
-        "output/figures/fusion_score_distribution_test.png"
-    )
-
-    # ----------------------------------------------------------
-    # INFERENCE PERFORMANCE
-    # ----------------------------------------------------------
-
-    fusion_inference = (
-        fault_fusion.measure_inference_time(
-            test_scores,
-            test_errors
+        "output/figures/fusion_confusion_test.png",
+        title=(
+            "Proposed Fault Score Fusion - "
+            "Test Confusion Matrix"
         )
     )
-
-    print("\n✓ Proposed fault score fusion completed.")
+    
+    
+    # ==========================================================
+    # 22. ROC CURVE
+    # ==========================================================
+    
+    fault_fusion.plot_roc_curve(
+        test_labels_array,
+        test_fused_scores,
+        "output/figures/fusion_roc_test.png",
+        title=(
+            "Proposed Fault Score Fusion - "
+            "Test ROC Curve"
+        )
+    )
+    
+    
+    # ==========================================================
+    # 23. SCORE DISTRIBUTION
+    # ==========================================================
+    
+    fault_fusion.plot_score_distribution(
+        test_fused_scores,
+        test_labels_array,
+        fault_fusion.threshold,
+        "output/figures/fusion_score_distribution_test.png",
+        title=(
+            "Proposed Fault Score Fusion - "
+            "Test Score Distribution"
+        )
+    )
+    
+    
+    # ==========================================================
+    # 24. INFERENCE PERFORMANCE
+    # ==========================================================
+    #
+    # The inference function expects the original scores and applies
+    # the validation-fitted scaler.
+    #
+    # Therefore we pass the direction-aligned Isolation Forest scores.
+    # ==========================================================
+    
+    fusion_inference = (
+        fault_fusion.measure_inference_time(
+            test_if_aligned,
+            test_ae_errors
+        )
+    )
+    
+    
+    # ==========================================================
+    # 25. FINAL SUMMARY
+    # ==========================================================
+    
+    print("\n" + "=" * 70)
+    print("PROPOSED FUSION SUMMARY")
+    print("=" * 70)
+    
+    print(
+        f"Isolation Forest Weight : "
+        f"{fault_fusion.isolation_weight:.2f}"
+    )
+    
+    print(
+        f"Autoencoder Weight      : "
+        f"{fault_fusion.autoencoder_weight:.2f}"
+    )
+    
+    print(
+        f"Isolation Forest Direction : "
+        f"{direction_text}"
+    )
+    
+    print(
+        f"Fusion Threshold         : "
+        f"{fault_fusion.threshold:.8f}"
+    )
+    
+    print(
+        f"Validation F1            : "
+        f"{fusion_validation_results['f1_score']:.4f}"
+    )
+    
+    print(
+        f"Validation ROC-AUC       : "
+        f"{fusion_validation_results['roc_auc']:.4f}"
+    )
+    
+    print(
+        f"Test Accuracy            : "
+        f"{fusion_test_results['accuracy']:.4f}"
+    )
+    
+    print(
+        f"Test Precision           : "
+        f"{fusion_test_results['precision']:.4f}"
+    )
+    
+    print(
+        f"Test Recall              : "
+        f"{fusion_test_results['recall']:.4f}"
+    )
+    
+    print(
+        f"Test F1                  : "
+        f"{fusion_test_results['f1_score']:.4f}"
+    )
+    
+    print(
+        f"Test ROC-AUC             : "
+        f"{fusion_test_results['roc_auc']:.4f}"
+    )
+    
+    print(
+        "\n✓ Isolation Forest score direction "
+        "calibrated using validation data."
+    )
+    
+    print(
+        "✓ Validation-only score normalization maintained."
+    )
+    
+    print(
+        "✓ Validation-only threshold selection maintained."
+    )
+    
+    print(
+        "✓ Test set used only for final evaluation."
+    )
+    
+    print(
+        "\n✓ Proposed fault score fusion completed."
+    )
     # ==========================================================
     # STEP 14 : LSTM RUL PREDICTION
     # ==========================================================
@@ -1328,13 +1845,6 @@ def main():
         f"Test Wavelet          : "
         f"{wavelet_test.shape}"
     )
-
-    print("\n" + "=" * 70)
-    print("PREPROCESSING + FEATURE ENGINEERING COMPLETED")
-    print("=" * 70)
-
-    print("\nNext Module:")
-    print("→ Isolation Forest Anomaly Detection")
 
 
 if __name__ == "__main__":

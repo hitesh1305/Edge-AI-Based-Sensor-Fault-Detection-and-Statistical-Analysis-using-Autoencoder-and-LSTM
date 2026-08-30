@@ -1,2 +1,2 @@
-model,split,accuracy,precision,recall,f1_score,roc_auc,threshold,samples,actual_anomalies,predicted_anomalies,isolation_weight,autoencoder_weight
-Proposed Score Fusion,test,0.8136173449980981,0.484394506866417,0.8344086021505376,0.6129541864139021,0.9125554031761176,0.14667794115497335,2629,465,801,0.5,0.5
+model,split,accuracy,precision,recall,f1_score,roc_auc,threshold,samples,actual_anomalies,predicted_anomalies,isolation_weight,autoencoder_weight,calibration_low_percentile,calibration_high_percentile
+Proposed Score Fusion,test,0.900342335488779,0.7422434367541766,0.6688172043010753,0.7036199095022625,0.9270844513346452,0.2942700601000486,2629,465,419,0.5,0.5,1.0,99.0
