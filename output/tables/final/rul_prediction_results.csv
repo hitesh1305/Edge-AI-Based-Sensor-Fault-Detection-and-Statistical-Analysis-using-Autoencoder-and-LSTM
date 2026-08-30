@@ -1,0 +1,2 @@
+model,split,mae,rmse,r2,samples
+LSTM RUL Predictor,test,21.844587326049805,34.63362229061162,0.6628518104553223,2629

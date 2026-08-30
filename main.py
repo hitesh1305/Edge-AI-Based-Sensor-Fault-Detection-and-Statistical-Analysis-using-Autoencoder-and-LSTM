@@ -7,8 +7,10 @@ using NASA C-MAPSS Dataset
 import matplotlib
 
 matplotlib.use("Agg")
-
+from pathlib import Path
 import numpy as np
+import pandas as pd
+
 
 from configs.config import (
     TRAIN_FILE,
@@ -1789,63 +1791,664 @@ def main():
     )
 
 
-    # ======================================================
-    # FINAL PIPELINE SUMMARY
-    # ======================================================
+    # ==========================================================
+    # STEP 15 : FINAL MODEL COMPARISON & INTEGRATED RESULTS
+    # ==========================================================
 
     print("\n" + "=" * 70)
-    print("PIPELINE SUMMARY")
+    print("STEP 15 : FINAL MODEL COMPARISON & INTEGRATED RESULTS")
+    print("=" * 70)
+
+    """
+    Final Research Evaluation
+    --------------------------
+
+    This step ONLY consolidates the final evaluation results.
+
+    Fault Detection:
+        1. Isolation Forest
+        2. Dense Autoencoder
+        3. Proposed IF + Autoencoder Fusion
+
+    RUL Prediction:
+        4. LSTM RUL Predictor
+
+    No model is retrained in this step.
+    No threshold is optimized in this step.
+    No test data is used for calibration.
+    """
+
+    # ==========================================================
+    # 1. OUTPUT DIRECTORIES
+    # ==========================================================
+
+    final_table_dir = Path(
+        "output/tables/final"
+    )
+
+    final_figure_dir = Path(
+        "output/figures/final"
+    )
+
+    final_table_dir.mkdir(
+        parents=True,
+        exist_ok=True
+    )
+
+    final_figure_dir.mkdir(
+        parents=True,
+        exist_ok=True
+    )
+
+
+    # ==========================================================
+    # 2. HELPER FUNCTION
+    # ==========================================================
+
+    def get_latest_test_result(
+        csv_path,
+        model_name
+    ):
+
+        default_result = {
+            "model": model_name,
+            "split": "test",
+            "accuracy": np.nan,
+            "precision": np.nan,
+            "recall": np.nan,
+            "f1_score": np.nan,
+            "roc_auc": np.nan
+        }
+
+        try:
+
+            csv_path = Path(csv_path)
+
+            if not csv_path.exists():
+
+                print(
+                    f"\nWARNING: File not found:"
+                    f"\n  {csv_path}"
+                )
+
+                return default_result
+
+            df = pd.read_csv(csv_path)
+
+            if "split" in df.columns:
+
+                test_rows = df[
+                    df["split"]
+                    .astype(str)
+                    .str.lower()
+                    .eq("test")
+                ]
+
+            else:
+
+                test_rows = df
+
+            if len(test_rows) == 0:
+
+                print(
+                    f"\nWARNING: No test result found for "
+                    f"{model_name}."
+                )
+
+                return default_result
+
+            # Latest result from the current results file
+            row = test_rows.iloc[-1]
+
+            return {
+                "model": model_name,
+                "split": "test",
+
+                "accuracy": float(
+                    row["accuracy"]
+                ),
+
+                "precision": float(
+                    row["precision"]
+                ),
+
+                "recall": float(
+                    row["recall"]
+                ),
+
+                "f1_score": float(
+                    row["f1_score"]
+                ),
+
+                "roc_auc": float(
+                    row["roc_auc"]
+                )
+            }
+
+        except Exception as e:
+
+            print(
+                f"\nWARNING: Could not read "
+                f"{model_name} results."
+            )
+
+            print(
+                f"Reason: {e}"
+            )
+
+            return default_result
+
+
+    # ==========================================================
+    # 3. ISOLATION FOREST
+    # ==========================================================
+
+    isolation_forest_test = get_latest_test_result(
+        "output/tables/isolation_forest_results.csv",
+        "Isolation Forest"
+    )
+
+
+    # ==========================================================
+    # 4. AUTOENCODER
+    # ==========================================================
+
+    autoencoder_test = get_latest_test_result(
+        "output/tables/autoencoder/results.csv",
+        "Dense Autoencoder"
+    )
+
+
+    # ==========================================================
+    # 5. PROPOSED FUSION
+    # ==========================================================
+
+    proposed_fusion_test = {
+        "model":
+            "Proposed IF + Autoencoder Fusion",
+
+        "split":
+            "test",
+
+        "accuracy":
+            float(
+                fusion_test_results["accuracy"]
+            ),
+
+        "precision":
+            float(
+                fusion_test_results["precision"]
+            ),
+
+        "recall":
+            float(
+                fusion_test_results["recall"]
+            ),
+
+        "f1_score":
+            float(
+                fusion_test_results["f1_score"]
+            ),
+
+        "roc_auc":
+            float(
+                fusion_test_results["roc_auc"]
+            )
+    }
+
+
+    # ==========================================================
+    # 6. FAULT DETECTION COMPARISON
+    # ==========================================================
+
+    fault_detection_comparison = pd.DataFrame(
+        [
+            isolation_forest_test,
+            autoencoder_test,
+            proposed_fusion_test
+        ]
+    )
+
+    fault_detection_path = (
+        final_table_dir
+        / "fault_detection_comparison.csv"
+    )
+
+    fault_detection_comparison.to_csv(
+        fault_detection_path,
+        index=False
+    )
+
+
+    # ==========================================================
+    # 7. DISPLAY FAULT DETECTION RESULTS
+    # ==========================================================
+
+    print("\n" + "-" * 70)
+    print("FINAL FAULT DETECTION PERFORMANCE - TEST")
+    print("-" * 70)
+
+    display_columns = [
+        "model",
+        "accuracy",
+        "precision",
+        "recall",
+        "f1_score",
+        "roc_auc"
+    ]
+
+    display_df = (
+        fault_detection_comparison[
+            display_columns
+        ].copy()
+    )
+
+    for column in [
+        "accuracy",
+        "precision",
+        "recall",
+        "f1_score",
+        "roc_auc"
+    ]:
+
+        display_df[column] = (
+            display_df[column] * 100
+        )
+
+    print(
+        display_df.to_string(
+            index=False,
+            formatters={
+                "accuracy":
+                    lambda x: f"{x:.2f}%",
+                "precision":
+                    lambda x: f"{x:.2f}%",
+                "recall":
+                    lambda x: f"{x:.2f}%",
+                "f1_score":
+                    lambda x: f"{x:.2f}%",
+                "roc_auc":
+                    lambda x: f"{x:.2f}%"
+            }
+        )
+    )
+
+    print(
+        f"\n✓ Saved:"
+        f"\n  {fault_detection_path}"
+    )
+
+
+    # ==========================================================
+    # 8. RUL PERFORMANCE
+    # ==========================================================
+
+    rul_comparison = pd.DataFrame(
+        [
+            {
+                "model":
+                    "LSTM RUL Predictor",
+
+                "split":
+                    "test",
+
+                "mae":
+                    float(
+                        test_rul_results["mae"]
+                    ),
+
+                "rmse":
+                    float(
+                        test_rul_results["rmse"]
+                    ),
+
+                "r2":
+                    float(
+                        test_rul_results["r2"]
+                    ),
+
+                "samples":
+                    int(
+                        X_test_lstm.shape[0]
+                    )
+            }
+        ]
+    )
+
+    rul_path = (
+        final_table_dir
+        / "rul_prediction_results.csv"
+    )
+
+    rul_comparison.to_csv(
+        rul_path,
+        index=False
+    )
+
+
+    # ==========================================================
+    # 9. DISPLAY RUL RESULTS
+    # ==========================================================
+
+    print("\n" + "-" * 70)
+    print("FINAL RUL PREDICTION PERFORMANCE - TEST")
+    print("-" * 70)
+
+    print(
+        f"Model : LSTM RUL Predictor"
+    )
+
+    print(
+        f"MAE   : "
+        f"{test_rul_results['mae']:.2f} cycles"
+    )
+
+    print(
+        f"RMSE  : "
+        f"{test_rul_results['rmse']:.2f} cycles"
+    )
+
+    print(
+        f"R²    : "
+        f"{test_rul_results['r2']:.4f}"
+    )
+
+    print(
+        f"Samples : "
+        f"{X_test_lstm.shape[0]}"
+    )
+
+    print(
+        f"\n✓ Saved:"
+        f"\n  {rul_path}"
+    )
+
+
+    # ==========================================================
+    # 10. DATASET / PIPELINE SUMMARY
+    # ==========================================================
+
+    pipeline_summary = pd.DataFrame(
+        [
+            {
+                "training_engines":
+                    int(
+                        train_df[
+                            "engine_id"
+                        ].nunique()
+                    ),
+
+                "validation_engines":
+                    int(
+                        validation_df[
+                            "engine_id"
+                        ].nunique()
+                    ),
+
+                "test_engines":
+                    int(
+                        test_df[
+                            "engine_id"
+                        ].nunique()
+                    ),
+
+                "training_windows":
+                    int(
+                        X_train.shape[0]
+                    ),
+
+                "validation_windows":
+                    int(
+                        X_validation.shape[0]
+                    ),
+
+                "test_windows":
+                    int(
+                        X_test.shape[0]
+                    ),
+
+                "window_length":
+                    int(
+                        X_train.shape[1]
+                    ),
+
+                "sensor_features":
+                    int(
+                        X_train.shape[2]
+                    ),
+
+                "wavelet_features":
+                    int(
+                        wavelet_train.shape[1]
+                    )
+            }
+        ]
+    )
+
+    pipeline_summary_path = (
+        final_table_dir
+        / "pipeline_summary.csv"
+    )
+
+    pipeline_summary.to_csv(
+        pipeline_summary_path,
+        index=False
+    )
+
+
+    # ==========================================================
+    # 11. FINAL RESEARCH SUMMARY
+    # ==========================================================
+
+    final_summary = pd.DataFrame(
+        [
+            {
+                "component":
+                    "Isolation Forest",
+
+                "test_accuracy":
+                    isolation_forest_test[
+                        "accuracy"
+                    ],
+
+                "test_f1":
+                    isolation_forest_test[
+                        "f1_score"
+                    ],
+
+                "test_roc_auc":
+                    isolation_forest_test[
+                        "roc_auc"
+                    ]
+            },
+
+            {
+                "component":
+                    "Dense Autoencoder",
+
+                "test_accuracy":
+                    autoencoder_test[
+                        "accuracy"
+                    ],
+
+                "test_f1":
+                    autoencoder_test[
+                        "f1_score"
+                    ],
+
+                "test_roc_auc":
+                    autoencoder_test[
+                        "roc_auc"
+                    ]
+            },
+
+            {
+                "component":
+                    "Proposed Fusion",
+
+                "test_accuracy":
+                    proposed_fusion_test[
+                        "accuracy"
+                    ],
+
+                "test_f1":
+                    proposed_fusion_test[
+                        "f1_score"
+                    ],
+
+                "test_roc_auc":
+                    proposed_fusion_test[
+                        "roc_auc"
+                    ]
+            },
+
+            {
+                "component":
+                    "LSTM RUL Predictor",
+
+                "test_accuracy":
+                    np.nan,
+
+                "test_f1":
+                    np.nan,
+
+                "test_roc_auc":
+                    np.nan
+            }
+        ]
+    )
+
+    final_summary_path = (
+        final_table_dir
+        / "final_research_summary.csv"
+    )
+
+    final_summary.to_csv(
+        final_summary_path,
+        index=False
+    )
+
+
+    # ==========================================================
+    # 12. PRESENTATION-READY SUMMARY
+    # ==========================================================
+
+    print("\n" + "=" * 70)
+    print("PRESENTATION-READY RESULTS")
+    print("=" * 70)
+
+    print("\nFAULT DETECTION")
+
+    print(
+        f"  Isolation Forest"
+        f"  : Accuracy "
+        f"{isolation_forest_test['accuracy'] * 100:.2f}%"
+        f" | F1 "
+        f"{isolation_forest_test['f1_score'] * 100:.2f}%"
+        f" | AUC "
+        f"{isolation_forest_test['roc_auc'] * 100:.2f}%"
+    )
+
+    print(
+        f"  Autoencoder"
+        f"        : Accuracy "
+        f"{autoencoder_test['accuracy'] * 100:.2f}%"
+        f" | F1 "
+        f"{autoencoder_test['f1_score'] * 100:.2f}%"
+        f" | AUC "
+        f"{autoencoder_test['roc_auc'] * 100:.2f}%"
+    )
+
+    print(
+        f"  Proposed Fusion"
+        f"    : Accuracy "
+        f"{proposed_fusion_test['accuracy'] * 100:.2f}%"
+        f" | F1 "
+        f"{proposed_fusion_test['f1_score'] * 100:.2f}%"
+        f" | AUC "
+        f"{proposed_fusion_test['roc_auc'] * 100:.2f}%"
+    )
+
+    print("\nRUL PREDICTION")
+
+    print(
+        f"  LSTM MAE  : "
+        f"{test_rul_results['mae']:.2f} cycles"
+    )
+
+    print(
+        f"  LSTM RMSE : "
+        f"{test_rul_results['rmse']:.2f} cycles"
+    )
+
+    print(
+        f"  LSTM R²   : "
+        f"{test_rul_results['r2']:.4f}"
+    )
+
+    print("\nDATASET / PIPELINE")
+
+    print(
+        f"  Engines  : "
+        f"{train_df['engine_id'].nunique()} train / "
+        f"{validation_df['engine_id'].nunique()} validation / "
+        f"{test_df['engine_id'].nunique()} test"
+    )
+
+    print(
+        f"  Windows  : "
+        f"{X_train.shape[0]} train / "
+        f"{X_validation.shape[0]} validation / "
+        f"{X_test.shape[0]} test"
+    )
+
+    print(
+        f"  Window length : "
+        f"{X_train.shape[1]} timesteps"
+    )
+
+    print(
+        f"  Sensor features : "
+        f"{X_train.shape[2]}"
+    )
+
+    print(
+        f"  Wavelet features : "
+        f"{wavelet_train.shape[1]}"
+    )
+
+
+    # ==========================================================
+    # 13. FINAL STATUS
+    # ==========================================================
+
+    print("\n" + "=" * 70)
+    print("STEP 15 COMPLETED SUCCESSFULLY")
     print("=" * 70)
 
     print(
-        f"Training Engines      : "
-        f"{train_df['engine_id'].nunique()}"
+        "\n✓ Fault detection comparison saved."
     )
 
     print(
-        f"Validation Engines    : "
-        f"{validation_df['engine_id'].nunique()}"
+        "✓ RUL prediction results saved."
     )
 
     print(
-        f"Test Engines          : "
-        f"{test_df['engine_id'].nunique()}"
-    )
-
-    print()
-
-    print(
-        f"Training Windows      : "
-        f"{X_train.shape}"
+        "✓ Pipeline summary saved."
     )
 
     print(
-        f"Validation Windows    : "
-        f"{X_validation.shape}"
+        "✓ Presentation-ready results generated."
     )
 
     print(
-        f"Test Windows          : "
-        f"{X_test.shape}"
+        f"\nFinal output directory:"
+        f"\n  {final_table_dir}"
     )
-
-    print()
-
-    print(
-        f"Training Wavelet      : "
-        f"{wavelet_train.shape}"
-    )
-
-    print(
-        f"Validation Wavelet    : "
-        f"{wavelet_validation.shape}"
-    )
-
-    print(
-        f"Test Wavelet          : "
-        f"{wavelet_test.shape}"
-    )
-
+ 
+    
 
 if __name__ == "__main__":
     main()
+    

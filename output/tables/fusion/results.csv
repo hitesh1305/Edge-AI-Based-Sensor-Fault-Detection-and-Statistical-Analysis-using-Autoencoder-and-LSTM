@@ -1,2 +1,2 @@
 model,split,accuracy,precision,recall,f1_score,roc_auc,threshold,samples,actual_anomalies,predicted_anomalies,isolation_weight,autoencoder_weight,calibration_low_percentile,calibration_high_percentile
-Proposed Score Fusion,test,0.900342335488779,0.7422434367541766,0.6688172043010753,0.7036199095022625,0.9270844513346452,0.2942700601000486,2629,465,419,0.5,0.5,1.0,99.0
+Proposed Score Fusion,test,0.9064282997337391,0.7800511508951407,0.6559139784946236,0.7126168224299065,0.9272215928288912,0.30644596740282715,2629,465,391,0.5,0.5,1.0,99.0

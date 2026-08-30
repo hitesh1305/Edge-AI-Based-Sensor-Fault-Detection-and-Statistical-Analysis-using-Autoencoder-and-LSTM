@@ -1,0 +1,4 @@
+component,test_samples,total_inference_time_seconds,milliseconds_per_window
+Isolation Forest,2629,,
+Proposed Fusion,2629,6.350001785904169e-05,2.4153677390278314e-05
+LSTM RUL Predictor,2629,0.2780431999999564,0.10576006085962587

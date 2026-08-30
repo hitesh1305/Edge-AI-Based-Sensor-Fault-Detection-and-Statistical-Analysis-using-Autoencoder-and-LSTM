@@ -1,0 +1,941 @@
+
+<!DOCTYPE html>
+
+<html lang="en">
+
+<head>
+
+<meta charset="UTF-8">
+
+<meta name="viewport"
+      content="width=device-width, initial-scale=1.0">
+
+<title>
+Predictive Maintenance — Final Results
+</title>
+
+<style>
+
+* {
+    box-sizing: border-box;
+}
+
+body {
+    margin: 0;
+    font-family:
+        "Segoe UI",
+        Arial,
+        sans-serif;
+
+    background:
+        linear-gradient(
+            135deg,
+            #eef4ff 0%,
+            #f8fafc 50%,
+            #eef2ff 100%
+        );
+
+    color: #172033;
+}
+
+.container {
+    max-width: 1500px;
+    margin: auto;
+    padding: 28px;
+}
+
+.header {
+    background:
+        linear-gradient(
+            135deg,
+            #0b1f52,
+            #173b82
+        );
+
+    color: white;
+
+    border-radius: 22px;
+
+    padding: 30px 38px;
+
+    box-shadow:
+        0 15px 35px
+        rgba(15, 35, 80, 0.18);
+
+    margin-bottom: 24px;
+}
+
+.header h1 {
+    margin: 0;
+
+    font-size: 34px;
+    font-weight: 750;
+}
+
+.header p {
+    margin: 9px 0 0;
+
+    font-size: 16px;
+
+    opacity: 0.85;
+}
+
+.status {
+    float: right;
+
+    background: #dff7e5;
+
+    color: #176b35;
+
+    padding: 10px 17px;
+
+    border-radius: 30px;
+
+    font-weight: 700;
+
+    font-size: 13px;
+}
+
+.section-title {
+    font-size: 21px;
+
+    font-weight: 750;
+
+    margin:
+        28px 0 14px;
+
+    color: #102a62;
+}
+
+.grid {
+    display: grid;
+
+    grid-template-columns:
+        repeat(4, 1fr);
+
+    gap: 16px;
+}
+
+.card {
+    background: white;
+
+    border-radius: 17px;
+
+    padding: 20px;
+
+    box-shadow:
+        0 7px 22px
+        rgba(30, 50, 90, 0.08);
+
+    border:
+        1px solid #e3e9f5;
+}
+
+.metric-label {
+    font-size: 13px;
+
+    color: #64748b;
+
+    font-weight: 600;
+}
+
+.metric-value {
+    font-size: 31px;
+
+    font-weight: 800;
+
+    margin-top: 7px;
+
+    color: #123d8c;
+}
+
+.metric-sub {
+    margin-top: 5px;
+
+    font-size: 12px;
+
+    color: #7b879b;
+}
+
+.highlight {
+    border:
+        2px solid #6d48c9;
+
+    background:
+        linear-gradient(
+            135deg,
+            #ffffff,
+            #f7f3ff
+        );
+}
+
+.green {
+    color: #238344;
+}
+
+.purple {
+    color: #6542b5;
+}
+
+.orange {
+    color: #d97706;
+}
+
+.blue {
+    color: #174caa;
+}
+
+table {
+    width: 100%;
+
+    border-collapse:
+        separate;
+
+    border-spacing: 0;
+
+    overflow: hidden;
+
+    background: white;
+
+    border-radius: 17px;
+
+    box-shadow:
+        0 7px 22px
+        rgba(30, 50, 90, 0.08);
+}
+
+th {
+    background: #102d67;
+
+    color: white;
+
+    padding: 15px 12px;
+
+    text-align: center;
+
+    font-size: 13px;
+}
+
+td {
+    padding: 15px 12px;
+
+    text-align: center;
+
+    border-bottom:
+        1px solid #e8edf5;
+
+    font-size: 14px;
+}
+
+td:first-child {
+    text-align: left;
+
+    font-weight: 700;
+}
+
+.best {
+    font-weight: 800;
+
+    color: #21833e;
+}
+
+.fusion {
+    font-weight: 800;
+
+    color: #6343ad;
+}
+
+.cards-3 {
+    display: grid;
+
+    grid-template-columns:
+        repeat(3, 1fr);
+
+    gap: 16px;
+}
+
+.cards-5 {
+    display: grid;
+
+    grid-template-columns:
+        repeat(5, 1fr);
+
+    gap: 14px;
+}
+
+.big-card {
+    background: white;
+
+    border-radius: 18px;
+
+    padding: 22px;
+
+    text-align: center;
+
+    box-shadow:
+        0 7px 22px
+        rgba(30, 50, 90, 0.08);
+
+    border:
+        1px solid #e3e9f5;
+}
+
+.big-card .value {
+    font-size: 30px;
+
+    font-weight: 800;
+
+    margin: 7px 0;
+}
+
+.big-card .label {
+    color: #64748b;
+
+    font-size: 13px;
+
+    font-weight: 600;
+}
+
+.insight {
+    margin-top: 18px;
+
+    background:
+        linear-gradient(
+            135deg,
+            #f0f7ff,
+            #ffffff
+        );
+
+    border-left:
+        5px solid #2859a8;
+
+    border-radius: 13px;
+
+    padding: 18px 20px;
+
+    line-height: 1.55;
+
+    box-shadow:
+        0 5px 18px
+        rgba(30, 50, 90, 0.06);
+}
+
+.insight strong {
+    color: #123d8c;
+}
+
+.footer {
+    margin-top: 28px;
+
+    text-align: center;
+
+    color: #64748b;
+
+    font-size: 12px;
+
+    padding: 18px;
+}
+
+@media(max-width: 1000px) {
+
+    .grid,
+    .cards-3,
+    .cards-5 {
+        grid-template-columns:
+            repeat(2, 1fr);
+    }
+
+}
+
+@media(max-width: 650px) {
+
+    .grid,
+    .cards-3,
+    .cards-5 {
+        grid-template-columns: 1fr;
+    }
+
+    .status {
+        float: none;
+
+        display: inline-block;
+
+        margin-top: 15px;
+    }
+
+}
+
+</style>
+
+</head>
+
+<body>
+
+<div class="container">
+
+<!-- ================================================= -->
+<!-- HEADER -->
+<!-- ================================================= -->
+
+<div class="header">
+
+<span class="status">
+✓ PIPELINE COMPLETED
+</span>
+
+<h1>
+Predictive Maintenance Pipeline
+</h1>
+
+<p>
+Integrated Fault Detection &amp;
+Remaining Useful Life (RUL) Prediction
+</p>
+
+</div>
+
+
+<!-- ================================================= -->
+<!-- FAULT DETECTION -->
+<!-- ================================================= -->
+
+<div class="section-title">
+1. Fault Detection — Test Performance
+</div>
+
+<table>
+
+<thead>
+
+<tr>
+
+<th>Model</th>
+
+<th>Accuracy</th>
+
+<th>Precision</th>
+
+<th>Recall</th>
+
+<th>F1 Score</th>
+
+<th>ROC-AUC</th>
+
+</tr>
+
+</thead>
+
+<tbody>
+
+<tr>
+
+<td>
+Isolation Forest
+</td>
+
+<td>81.29%</td>
+
+<td>48.32%</td>
+
+<td>83.44%</td>
+
+<td>61.20%</td>
+
+<td>91.23%</td>
+
+</tr>
+
+
+<tr>
+
+<td>
+Dense Autoencoder
+</td>
+
+<td class="best">
+92.01%
+</td>
+
+<td class="best">
+82.95%
+</td>
+
+<td>
+69.03%
+</td>
+
+<td class="best">
+75.35%
+</td>
+
+<td class="best">
+95.28%
+</td>
+
+</tr>
+
+
+<tr>
+
+<td class="fusion">
+Proposed IF + Autoencoder Fusion
+</td>
+
+<td class="fusion">
+90.64%
+</td>
+
+<td class="fusion">
+78.01%
+</td>
+
+<td class="fusion">
+65.59%
+</td>
+
+<td class="fusion">
+71.26%
+</td>
+
+<td class="fusion">
+92.72%
+</td>
+
+</tr>
+
+</tbody>
+
+</table>
+
+
+<div class="insight">
+
+<strong>Key finding:</strong>
+
+The Dense Autoencoder currently provides the
+strongest standalone fault-detection performance,
+achieving
+<strong>92.01% accuracy</strong>,
+<strong>75.35% F1</strong>
+and
+<strong>95.28% ROC-AUC</strong>
+on unseen test data.
+
+The proposed fusion model demonstrates the
+integrated multi-model detection approach and
+remains part of the final framework.
+
+</div>
+
+
+<!-- ================================================= -->
+<!-- IMPACT METRICS -->
+<!-- ================================================= -->
+
+<div class="section-title">
+2. Key Performance Indicators
+</div>
+
+<div class="grid">
+
+<div class="card">
+
+<div class="metric-label">
+BEST FAULT DETECTION ACCURACY
+</div>
+
+<div class="metric-value green">
+92.01%
+</div>
+
+<div class="metric-sub">
+Dense Autoencoder
+</div>
+
+</div>
+
+
+<div class="card">
+
+<div class="metric-label">
+BEST FAULT DETECTION F1
+</div>
+
+<div class="metric-value green">
+75.35%
+</div>
+
+<div class="metric-sub">
+Dense Autoencoder
+</div>
+
+</div>
+
+
+<div class="card highlight">
+
+<div class="metric-label">
+PROPOSED FUSION ROC-AUC
+</div>
+
+<div class="metric-value purple">
+92.72%
+</div>
+
+<div class="metric-sub">
+IF + Autoencoder
+</div>
+
+</div>
+
+
+<div class="card">
+
+<div class="metric-label">
+LSTM RUL R²
+</div>
+
+<div class="metric-value blue">
+0.66
+</div>
+
+<div class="metric-sub">
+Test set
+</div>
+
+</div>
+
+</div>
+
+
+<!-- ================================================= -->
+<!-- RUL -->
+<!-- ================================================= -->
+
+<div class="section-title">
+3. Remaining Useful Life — LSTM Prediction
+</div>
+
+<div class="cards-3">
+
+<div class="big-card">
+
+<div class="label">
+MAE
+</div>
+
+<div class="value blue">
+21.84
+</div>
+
+<div class="label">
+cycles
+</div>
+
+</div>
+
+
+<div class="big-card">
+
+<div class="label">
+RMSE
+</div>
+
+<div class="value orange">
+34.63
+</div>
+
+<div class="label">
+cycles
+</div>
+
+</div>
+
+
+<div class="big-card">
+
+<div class="label">
+R² SCORE
+</div>
+
+<div class="value purple">
+0.66
+</div>
+
+<div class="label">
+coefficient of determination
+</div>
+
+</div>
+
+</div>
+
+
+<div class="insight">
+
+<strong>RUL result:</strong>
+
+The LSTM predictor achieved a test
+<strong>MAE of 21.84 cycles</strong>
+and
+<strong>R² of 0.66</strong>,
+providing the predictive component of the
+maintenance framework.
+
+</div>
+
+
+<!-- ================================================= -->
+<!-- DATASET -->
+<!-- ================================================= -->
+
+<div class="section-title">
+4. Dataset &amp; Experimental Setup
+</div>
+
+<div class="cards-5">
+
+<div class="big-card">
+
+<div class="label">
+TOTAL ENGINES
+</div>
+
+<div class="value blue">
+100
+</div>
+
+</div>
+
+
+<div class="big-card">
+
+<div class="label">
+TRAIN / VAL / TEST
+</div>
+
+<div class="value">
+70 / 15 / 15
+</div>
+
+</div>
+
+
+<div class="big-card">
+
+<div class="label">
+WINDOW LENGTH
+</div>
+
+<div class="value purple">
+30
+</div>
+
+<div class="label">
+timesteps
+</div>
+
+</div>
+
+
+<div class="big-card">
+
+<div class="label">
+SENSOR FEATURES
+</div>
+
+<div class="value orange">
+17
+</div>
+
+</div>
+
+
+<div class="big-card">
+
+<div class="label">
+WAVELET FEATURES
+</div>
+
+<div class="value green">
+136
+</div>
+
+</div>
+
+</div>
+
+
+<!-- ================================================= -->
+<!-- WINDOWS -->
+<!-- ================================================= -->
+
+<div class="section-title">
+5. Data Windows
+</div>
+
+<div class="cards-3">
+
+<div class="big-card">
+
+<div class="label">
+TRAINING WINDOWS
+</div>
+
+<div class="value blue">
+12,377
+</div>
+
+</div>
+
+
+<div class="big-card">
+
+<div class="label">
+VALIDATION WINDOWS
+</div>
+
+<div class="value green">
+2,725
+</div>
+
+</div>
+
+
+<div class="big-card">
+
+<div class="label">
+TEST WINDOWS
+</div>
+
+<div class="value purple">
+2,629
+</div>
+
+</div>
+
+</div>
+
+
+<!-- ================================================= -->
+<!-- RESEARCH CONTRIBUTION -->
+<!-- ================================================= -->
+
+<div class="section-title">
+6. Research Contribution
+</div>
+
+<div class="card">
+
+<div style="
+font-size:18px;
+font-weight:750;
+color:#123d8c;
+margin-bottom:12px;
+">
+
+Integrated Predictive Maintenance Framework
+
+</div>
+
+<ul style="
+line-height:1.8;
+color:#475569;
+">
+
+<li>
+<strong>Fault Detection:</strong>
+Isolation Forest and Dense Autoencoder
+provide complementary anomaly-detection approaches.
+</li>
+
+<li>
+<strong>Proposed Architecture:</strong>
+IF + Autoencoder score fusion integrates
+multiple detection signals.
+</li>
+
+<li>
+<strong>RUL Prediction:</strong>
+LSTM estimates remaining useful life from
+temporal sensor behavior.
+</li>
+
+<li>
+<strong>Experimental Validation:</strong>
+Models are evaluated on unseen test engines
+rather than only training data.
+</li>
+
+</ul>
+
+</div>
+
+
+<!-- ================================================= -->
+<!-- FINAL TAKEAWAY -->
+<!-- ================================================= -->
+
+<div class="section-title">
+7. Presentation Takeaway
+</div>
+
+<div class="card highlight">
+
+<div style="
+font-size:20px;
+font-weight:800;
+color:#4b3192;
+margin-bottom:10px;
+">
+
+Current Project Status
+
+</div>
+
+<p style="
+font-size:16px;
+line-height:1.7;
+color:#475569;
+">
+
+The complete predictive-maintenance pipeline has
+been implemented and evaluated.
+
+The current results demonstrate strong anomaly
+detection capability from the Dense Autoencoder,
+an integrated fusion-based detection architecture,
+and an LSTM-based RUL prediction component.
+
+</p>
+
+<p style="
+font-weight:700;
+color:#4b3192;
+">
+
+Next research focus:
+improve the fusion strategy and investigate the
+remaining performance gap between individual
+components and the integrated framework.
+
+</p>
+
+</div>
+
+
+<div class="footer">
+
+Predictive Maintenance Research Project
+&nbsp;•&nbsp;
+Final Experimental Evaluation
+&nbsp;•&nbsp;
+Generated automatically from pipeline results
+
+</div>
+
+</div>
+
+</body>
+
+</html>
