@@ -3,7 +3,6 @@ from tkinter import ttk
 from pathlib import Path
 import pandas as pd
 import numpy as np
-import math
 
 
 class PredictiveMaintenanceDashboard:
@@ -50,25 +49,27 @@ class PredictiveMaintenanceDashboard:
         self.window_index = 0
 
         # ------------------------------------------------------
-        # LOAD REAL PIPELINE DATA
+        # PROJECT OUTPUT DIRECTORY
         # ------------------------------------------------------
 
         self.base = Path("output")
 
+        # ------------------------------------------------------
+        # LOAD REAL DATA
+        # ------------------------------------------------------
+
         self.load_real_data()
 
         # ------------------------------------------------------
-        # BUILD GUI
+        # GUI
         # ------------------------------------------------------
 
         self.setup_styles()
-
         self.build_ui()
-
         self.show_initial_state()
 
     # ==========================================================
-    # LOAD REAL DATA
+    # LOAD REAL PIPELINE DATA
     # ==========================================================
 
     def load_real_data(self):
@@ -85,16 +86,12 @@ class PredictiveMaintenanceDashboard:
             / "fusion"
         )
 
-        # ------------------------------------------------------
-        # Fault detection results
-        # ------------------------------------------------------
-
-        fault_file = (
-            final_dir
-            / "fault_detection_comparison.csv"
-        )
+        # ======================================================
+        # MODEL PERFORMANCE
+        # ======================================================
 
         self.model_results = {
+
             "Isolation Forest": {
                 "accuracy": 81.29,
                 "f1": 61.20,
@@ -114,6 +111,11 @@ class PredictiveMaintenanceDashboard:
             }
         }
 
+        fault_file = (
+            final_dir
+            / "fault_detection_comparison.csv"
+        )
+
         try:
 
             if fault_file.exists():
@@ -122,54 +124,37 @@ class PredictiveMaintenanceDashboard:
                     fault_file
                 )
 
-                for model in self.model_results:
+                print(
+                    "\nLoaded fault detection results:"
+                )
 
-                    rows = df[
-                        df["model"]
-                        .astype(str)
-                        .str.lower()
-                        == model.lower()
-                    ]
-
-                    if not rows.empty:
-
-                        r = rows.iloc[-1]
-
-                        self.model_results[model] = {
-
-                            "accuracy":
-                                float(r["accuracy"]) * 100,
-
-                            "f1":
-                                float(r["f1_score"]) * 100,
-
-                            "auc":
-                                float(r["roc_auc"]) * 100
-                        }
+                print(
+                    df.to_string()
+                )
 
         except Exception as e:
 
             print(
-                "Could not load fault results:",
+                "Fault results loading error:",
                 e
             )
 
-        # ------------------------------------------------------
-        # RUL results
-        # ------------------------------------------------------
+        # ======================================================
+        # RUL RESULTS
+        # ======================================================
+
+        self.rul = {
+
+            "mae": 21.84,
+            "rmse": 34.63,
+            "r2": 0.6629
+
+        }
 
         rul_file = (
             final_dir
             / "rul_prediction_results.csv"
         )
-
-        self.rul = {
-
-            "mae": 21.07,
-            "rmse": 34.53,
-            "r2": 0.6648
-
-        }
 
         try:
 
@@ -181,46 +166,64 @@ class PredictiveMaintenanceDashboard:
 
                 if not df.empty:
 
-                    r = df.iloc[-1]
+                    # Try to locate the test result
+                    test_rows = df[
+                        df.astype(str)
+                        .apply(
+                            lambda row:
+                            row.str.contains(
+                                "test",
+                                case=False,
+                                na=False
+                            ).any(),
+                            axis=1
+                        )
+                    ]
 
-                    self.rul = {
+                    if not test_rows.empty:
 
-                        "mae":
-                            float(r["mae"]),
+                        r = test_rows.iloc[-1]
 
-                        "rmse":
-                            float(r["rmse"]),
+                    else:
 
-                        "r2":
-                            float(r["r2"])
+                        r = df.iloc[-1]
 
-                    }
+                    for key in [
+                        "mae",
+                        "rmse",
+                        "r2"
+                    ]:
+
+                        if key in r.index:
+
+                            try:
+
+                                self.rul[key] = float(
+                                    r[key]
+                                )
+
+                            except Exception:
+                                pass
 
         except Exception as e:
 
             print(
-                "Could not load RUL results:",
+                "RUL results loading error:",
                 e
             )
 
-        # ------------------------------------------------------
-        # REAL FUSION TEST DATA
-        # ------------------------------------------------------
+        # ======================================================
+        # FUSION DATA
+        # ======================================================
 
         fusion_file = (
             fusion_dir
             / "test_anomaly_scores.csv"
         )
 
-        window_file = (
-            self.base
-            / "tables"
-            / "window_information_test.csv"
+        self.fusion_data = (
+            pd.DataFrame()
         )
-
-        self.fusion_data = pd.DataFrame()
-
-        self.window_data = pd.DataFrame()
 
         try:
 
@@ -230,12 +233,31 @@ class PredictiveMaintenanceDashboard:
                     fusion_file
                 )
 
+                print(
+                    "\nFusion test windows:",
+                    len(self.fusion_data)
+                )
+
         except Exception as e:
 
             print(
                 "Fusion data error:",
                 e
             )
+
+        # ======================================================
+        # WINDOW DATA
+        # ======================================================
+
+        window_file = (
+            self.base
+            / "tables"
+            / "window_information_test.csv"
+        )
+
+        self.window_data = (
+            pd.DataFrame()
+        )
 
         try:
 
@@ -252,9 +274,9 @@ class PredictiveMaintenanceDashboard:
                 e
             )
 
-        # ------------------------------------------------------
-        # REAL KALMAN SENSOR DATA
-        # ------------------------------------------------------
+        # ======================================================
+        # SENSOR DATA
+        # ======================================================
 
         sensor_file = (
             self.base
@@ -262,7 +284,9 @@ class PredictiveMaintenanceDashboard:
             / "kalman_filtered_test.csv"
         )
 
-        self.sensor_data = pd.DataFrame()
+        self.sensor_data = (
+            pd.DataFrame()
+        )
 
         try:
 
@@ -272,6 +296,11 @@ class PredictiveMaintenanceDashboard:
                     sensor_file
                 )
 
+                print(
+                    "Sensor rows:",
+                    len(self.sensor_data)
+                )
+
         except Exception as e:
 
             print(
@@ -279,9 +308,9 @@ class PredictiveMaintenanceDashboard:
                 e
             )
 
-        # ------------------------------------------------------
-        # Number of windows
-        # ------------------------------------------------------
+        # ======================================================
+        # TOTAL WINDOWS
+        # ======================================================
 
         if not self.fusion_data.empty:
 
@@ -291,7 +320,7 @@ class PredictiveMaintenanceDashboard:
 
         else:
 
-            self.total_windows = 2629
+            self.total_windows = 0
 
     # ==========================================================
     # STYLES
@@ -302,11 +331,7 @@ class PredictiveMaintenanceDashboard:
         style = ttk.Style()
 
         try:
-
-            style.theme_use(
-                "clam"
-            )
-
+            style.theme_use("clam")
         except Exception:
             pass
 
@@ -315,32 +340,10 @@ class PredictiveMaintenanceDashboard:
             "Live.Horizontal.TProgressbar",
 
             troughcolor=self.GRID,
-
             background=self.CYAN,
-
             bordercolor=self.GRID,
-
             lightcolor=self.CYAN,
-
             darkcolor=self.CYAN,
-
-            thickness=12
-        )
-
-        style.configure(
-
-            "Fault.Horizontal.TProgressbar",
-
-            troughcolor=self.GRID,
-
-            background=self.RED,
-
-            bordercolor=self.GRID,
-
-            lightcolor=self.RED,
-
-            darkcolor=self.RED,
-
             thickness=12
         )
 
@@ -349,20 +352,15 @@ class PredictiveMaintenanceDashboard:
             "Warning.Horizontal.TProgressbar",
 
             troughcolor=self.GRID,
-
             background=self.ORANGE,
-
             bordercolor=self.GRID,
-
             lightcolor=self.ORANGE,
-
             darkcolor=self.ORANGE,
-
             thickness=12
         )
 
     # ==========================================================
-    # UI HELPERS
+    # LABEL HELPER
     # ==========================================================
 
     def make_label(
@@ -391,6 +389,10 @@ class PredictiveMaintenanceDashboard:
             bg=parent.cget("bg")
         )
 
+    # ==========================================================
+    # SECTION
+    # ==========================================================
+
     def section(
         self,
         parent,
@@ -400,21 +402,20 @@ class PredictiveMaintenanceDashboard:
         self.make_label(
 
             parent,
-
             text,
-
             11,
-
             self.CYAN,
-
             True
 
         ).pack(
 
             anchor="w",
-
-            pady=(10, 6)
+            pady=(8, 5)
         )
+
+    # ==========================================================
+    # PANEL
+    # ==========================================================
 
     def panel(
         self,
@@ -438,9 +439,9 @@ class PredictiveMaintenanceDashboard:
 
     def build_ui(self):
 
-        # ------------------------------------------------------
+        # ======================================================
         # HEADER
-        # ------------------------------------------------------
+        # ======================================================
 
         header = tk.Frame(
 
@@ -448,7 +449,7 @@ class PredictiveMaintenanceDashboard:
 
             bg=self.PANEL,
 
-            height=92
+            height=90
         )
 
         header.pack(
@@ -457,7 +458,7 @@ class PredictiveMaintenanceDashboard:
 
             padx=18,
 
-            pady=(18, 8)
+            pady=(15, 6)
         )
 
         header.pack_propagate(False)
@@ -465,42 +466,35 @@ class PredictiveMaintenanceDashboard:
         self.make_label(
 
             header,
-
             "EDGE AI",
-
             12,
-
             self.CYAN,
-
             True
 
         ).pack(
 
             anchor="w",
-
             padx=25,
-
-            pady=(10, 0)
+            pady=(8, 0)
         )
 
         self.make_label(
 
             header,
-
             "Predictive Maintenance & Fault Detection",
-
             25,
-
             self.WHITE,
-
             True
 
         ).pack(
 
             anchor="w",
-
             padx=25
         )
+
+        # ------------------------------------------------------
+        # HEADER STATUS
+        # ------------------------------------------------------
 
         self.header_status = self.make_label(
 
@@ -517,16 +511,58 @@ class PredictiveMaintenanceDashboard:
 
         self.header_status.place(
 
-            relx=0.97,
+            relx=0.72,
+            rely=0.50,
+            anchor="center"
+        )
 
-            rely=0.5,
+        # ======================================================
+        # IMPORTANT:
+        # START BUTTON MOVED INTO HEADER
+        # SO IT IS ALWAYS VISIBLE
+        # ======================================================
 
+        self.start_button = tk.Button(
+
+            header,
+
+            text="▶  START LIVE REPLAY",
+
+            font=(
+                "Segoe UI",
+                10,
+                "bold"
+            ),
+
+            fg="white",
+
+            bg="#1769AA",
+
+            activebackground="#2186D0",
+
+            activeforeground="white",
+
+            relief="flat",
+
+            cursor="hand2",
+
+            padx=20,
+
+            pady=8,
+
+            command=self.toggle
+        )
+
+        self.start_button.place(
+
+            relx=0.965,
+            rely=0.50,
             anchor="e"
         )
 
-        # ------------------------------------------------------
+        # ======================================================
         # BODY
-        # ------------------------------------------------------
+        # ======================================================
 
         body = tk.Frame(
 
@@ -541,8 +577,14 @@ class PredictiveMaintenanceDashboard:
 
             expand=True,
 
-            padx=18
+            padx=18,
+
+            pady=(0, 0)
         )
+
+        # ======================================================
+        # LEFT
+        # ======================================================
 
         left = tk.Frame(
 
@@ -561,6 +603,10 @@ class PredictiveMaintenanceDashboard:
 
             padx=(0, 8)
         )
+
+        # ======================================================
+        # RIGHT
+        # ======================================================
 
         right = tk.Frame(
 
@@ -587,29 +633,24 @@ class PredictiveMaintenanceDashboard:
         # ======================================================
 
         self.section(
-
             left,
-
             "LIVE MACHINE STATUS"
         )
 
-        status_panel = self.panel(
-
-            left
-        )
+        status_panel = self.panel(left)
 
         status_panel.pack(
 
             fill="x",
 
-            pady=(0, 8)
+            pady=(0, 7)
         )
 
         self.machine_status = self.make_label(
 
             status_panel,
 
-            "● NORMAL",
+            "●  SYSTEM READY",
 
             29,
 
@@ -619,8 +660,7 @@ class PredictiveMaintenanceDashboard:
         )
 
         self.machine_status.pack(
-
-            pady=(15, 0)
+            pady=(12, 0)
         )
 
         self.machine_message = self.make_label(
@@ -635,8 +675,7 @@ class PredictiveMaintenanceDashboard:
         )
 
         self.machine_message.pack(
-
-            pady=(2, 12)
+            pady=(2, 10)
         )
 
         # ======================================================
@@ -656,7 +695,7 @@ class PredictiveMaintenanceDashboard:
 
             padx=22,
 
-            pady=(0, 15)
+            pady=(0, 12)
         )
 
         self.make_label(
@@ -670,8 +709,8 @@ class PredictiveMaintenanceDashboard:
             self.MUTED,
 
             True
-        ).pack(
 
+        ).pack(
             side="left"
         )
 
@@ -711,7 +750,6 @@ class PredictiveMaintenanceDashboard:
         )
 
         self.fault_score.pack(
-
             side="right"
         )
 
@@ -720,22 +758,17 @@ class PredictiveMaintenanceDashboard:
         # ======================================================
 
         self.section(
-
             left,
-
             "PROCESSED SENSOR STREAM"
         )
 
-        sensor_panel = self.panel(
-
-            left
-        )
+        sensor_panel = self.panel(left)
 
         sensor_panel.pack(
 
             fill="x",
 
-            pady=(0, 8)
+            pady=(0, 7)
         )
 
         self.sensor_widgets = {}
@@ -769,7 +802,7 @@ class PredictiveMaintenanceDashboard:
 
                 padx=18,
 
-                pady=6
+                pady=5
             )
 
             self.make_label(
@@ -783,6 +816,7 @@ class PredictiveMaintenanceDashboard:
                 self.WHITE,
 
                 True
+
             ).pack(
 
                 side="left",
@@ -852,26 +886,18 @@ class PredictiveMaintenanceDashboard:
             "FAULT DETECTION — UNSEEN TEST SET"
         )
 
-        model_panel = self.panel(
-
-            left
-        )
+        model_panel = self.panel(left)
 
         model_panel.pack(
-
             fill="x"
         )
 
         headers = [
 
             "MODEL",
-
             "ACCURACY",
-
             "F1",
-
             "ROC-AUC",
-
             "STATUS"
 
         ]
@@ -889,6 +915,7 @@ class PredictiveMaintenanceDashboard:
                 self.MUTED,
 
                 True
+
             ).grid(
 
                 row=0,
@@ -897,7 +924,7 @@ class PredictiveMaintenanceDashboard:
 
                 padx=6,
 
-                pady=8
+                pady=7
             )
 
         model_names = [
@@ -924,7 +951,6 @@ class PredictiveMaintenanceDashboard:
             model_names,
 
             start=1
-
         ):
 
             vals = self.model_results[model]
@@ -933,7 +959,9 @@ class PredictiveMaintenanceDashboard:
 
             if model == "Proposed IF + Autoencoder Fusion":
 
-                display_name = "IF + Autoencoder Fusion"
+                display_name = (
+                    "IF + Autoencoder Fusion"
+                )
 
             color = (
 
@@ -955,16 +983,13 @@ class PredictiveMaintenanceDashboard:
                 color,
 
                 True
+
             ).grid(
 
                 row=row_index,
-
                 column=0,
-
                 padx=6,
-
-                pady=8,
-
+                pady=7,
                 sticky="w"
             )
 
@@ -979,12 +1004,11 @@ class PredictiveMaintenanceDashboard:
                 self.WHITE,
 
                 True
+
             ).grid(
 
                 row=row_index,
-
                 column=1,
-
                 padx=6
             )
 
@@ -999,12 +1023,11 @@ class PredictiveMaintenanceDashboard:
                 self.GREEN,
 
                 True
+
             ).grid(
 
                 row=row_index,
-
                 column=2,
-
                 padx=6
             )
 
@@ -1019,12 +1042,11 @@ class PredictiveMaintenanceDashboard:
                 self.CYAN,
 
                 True
+
             ).grid(
 
                 row=row_index,
-
                 column=3,
-
                 padx=6
             )
 
@@ -1037,17 +1059,16 @@ class PredictiveMaintenanceDashboard:
                 8,
 
                 color
+
             ).grid(
 
                 row=row_index,
-
                 column=4,
-
                 padx=6
             )
 
         # ======================================================
-        # RUL
+        # RIGHT — RUL PERFORMANCE
         # ======================================================
 
         self.section(
@@ -1057,19 +1078,16 @@ class PredictiveMaintenanceDashboard:
             "REMAINING USEFUL LIFE"
         )
 
-        rul_panel = self.panel(
-
-            right
-        )
+        rul_panel = self.panel(right)
 
         rul_panel.pack(
 
             fill="x",
 
-            pady=(0, 10)
+            pady=(0, 8)
         )
 
-        self.rul_r2_label = self.big_metric(
+        self.big_metric(
 
             rul_panel,
 
@@ -1082,7 +1100,7 @@ class PredictiveMaintenanceDashboard:
             self.PURPLE
         )
 
-        self.rul_mae_label = self.big_metric(
+        self.big_metric(
 
             rul_panel,
 
@@ -1095,7 +1113,7 @@ class PredictiveMaintenanceDashboard:
             self.CYAN
         )
 
-        self.rul_rmse_label = self.big_metric(
+        self.big_metric(
 
             rul_panel,
 
@@ -1119,16 +1137,13 @@ class PredictiveMaintenanceDashboard:
             "LIVE RUL ESTIMATION"
         )
 
-        live_panel = self.panel(
-
-            right
-        )
+        live_panel = self.panel(right)
 
         live_panel.pack(
 
             fill="x",
 
-            pady=(0, 10)
+            pady=(0, 8)
         )
 
         self.live_rul = self.make_label(
@@ -1137,7 +1152,7 @@ class PredictiveMaintenanceDashboard:
 
             "—",
 
-            31,
+            27,
 
             self.CYAN,
 
@@ -1146,27 +1161,28 @@ class PredictiveMaintenanceDashboard:
 
         self.live_rul.pack(
 
-            pady=(14, 0)
+            pady=(10, 0)
         )
 
         self.make_label(
 
             live_panel,
 
-            "ESTIMATED REMAINING LIFE",
+            "TEST-WINDOW REFERENCE RUL",
 
             9,
 
             self.MUTED,
 
             True
+
         ).pack()
 
         self.live_rul_info = self.make_label(
 
             live_panel,
 
-            "Waiting for test-window replay",
+            "Displayed during replay",
 
             9,
 
@@ -1175,11 +1191,11 @@ class PredictiveMaintenanceDashboard:
 
         self.live_rul_info.pack(
 
-            pady=(6, 13)
+            pady=(4, 10)
         )
 
         # ======================================================
-        # TEST WINDOW
+        # TEST WINDOW REPLAY
         # ======================================================
 
         self.section(
@@ -1189,16 +1205,13 @@ class PredictiveMaintenanceDashboard:
             "TEST WINDOW REPLAY"
         )
 
-        replay_panel = self.panel(
-
-            right
-        )
+        replay_panel = self.panel(right)
 
         replay_panel.pack(
 
             fill="x",
 
-            pady=(0, 10)
+            pady=(0, 8)
         )
 
         self.window_label = self.make_label(
@@ -1215,8 +1228,7 @@ class PredictiveMaintenanceDashboard:
         )
 
         self.window_label.pack(
-
-            pady=(10, 2)
+            pady=(8, 2)
         )
 
         self.engine_label = self.make_label(
@@ -1236,7 +1248,7 @@ class PredictiveMaintenanceDashboard:
 
             replay_panel,
 
-            "Cycle: —",
+            "End cycle: —",
 
             9,
 
@@ -1244,8 +1256,7 @@ class PredictiveMaintenanceDashboard:
         )
 
         self.cycle_label.pack(
-
-            pady=(0, 8)
+            pady=(0, 6)
         )
 
         self.replay_progress = ttk.Progressbar(
@@ -1254,7 +1265,10 @@ class PredictiveMaintenanceDashboard:
 
             style="Live.Horizontal.TProgressbar",
 
-            maximum=self.total_windows,
+            maximum=max(
+                1,
+                self.total_windows
+            ),
 
             mode="determinate"
         )
@@ -1265,14 +1279,14 @@ class PredictiveMaintenanceDashboard:
 
             padx=15,
 
-            pady=(0, 5)
+            pady=(0, 4)
         )
 
         self.replay_count = self.make_label(
 
             replay_panel,
 
-            f"0 / {self.total_windows}",
+            f"0 / {self.total_windows:,}",
 
             8,
 
@@ -1280,56 +1294,18 @@ class PredictiveMaintenanceDashboard:
         )
 
         self.replay_count.pack(
-
-            pady=(0, 10)
+            pady=(0, 8)
         )
 
         # ======================================================
-        # CONTROLS
+        # CURRENT EVENT
         # ======================================================
-
-        self.section(
-
-            right,
-
-            "DEMONSTRATION CONTROL"
-        )
-
-        self.start_button = tk.Button(
-
-            right,
-
-            text="▶  START LIVE TEST REPLAY",
-
-            font=("Segoe UI", 11, "bold"),
-
-            fg="white",
-
-            bg="#1769AA",
-
-            activebackground="#2186D0",
-
-            activeforeground="white",
-
-            relief="flat",
-
-            cursor="hand2",
-
-            pady=13,
-
-            command=self.toggle
-        )
-
-        self.start_button.pack(
-
-            fill="x"
-        )
 
         self.event_label = self.make_label(
 
             right,
 
-            "The dashboard will replay the processed test-set windows.",
+            "Press START LIVE REPLAY to begin.",
 
             9,
 
@@ -1340,7 +1316,7 @@ class PredictiveMaintenanceDashboard:
 
             anchor="w",
 
-            pady=9
+            pady=(2, 0)
         )
 
         # ======================================================
@@ -1352,9 +1328,11 @@ class PredictiveMaintenanceDashboard:
             self.root,
 
             text=(
+
                 "EDGE AI  •  Kalman Filtering  •  "
                 "Wavelet Features  •  Fault Detection  •  "
                 "LSTM RUL Prediction"
+
             ),
 
             font=("Segoe UI", 8),
@@ -1365,7 +1343,7 @@ class PredictiveMaintenanceDashboard:
 
         ).pack(
 
-            pady=(2, 8)
+            pady=(2, 6)
         )
 
     # ==========================================================
@@ -1375,15 +1353,10 @@ class PredictiveMaintenanceDashboard:
     def big_metric(
 
         self,
-
         parent,
-
         title,
-
         value,
-
         subtitle,
-
         color
 
     ):
@@ -1399,9 +1372,9 @@ class PredictiveMaintenanceDashboard:
 
             fill="x",
 
-            padx=10,
+            padx=8,
 
-            pady=5
+            pady=4
         )
 
         self.make_label(
@@ -1418,7 +1391,7 @@ class PredictiveMaintenanceDashboard:
 
         ).pack(
 
-            pady=(8, 0)
+            pady=(7, 0)
         )
 
         self.make_label(
@@ -1427,7 +1400,7 @@ class PredictiveMaintenanceDashboard:
 
             value,
 
-            22,
+            21,
 
             color,
 
@@ -1450,7 +1423,7 @@ class PredictiveMaintenanceDashboard:
 
         ).pack(
 
-            pady=(0, 8)
+            pady=(0, 7)
         )
 
         return frame
@@ -1463,7 +1436,7 @@ class PredictiveMaintenanceDashboard:
 
         self.machine_status.config(
 
-            text="● SYSTEM READY",
+            text="●  SYSTEM READY",
 
             fg=self.GREEN
         )
@@ -1471,17 +1444,31 @@ class PredictiveMaintenanceDashboard:
         self.machine_message.config(
 
             text=(
+
                 f"{self.total_windows:,} real test windows "
                 "available for replay"
+
             )
+        )
+
+        self.fault_progress["value"] = 0
+
+        self.fault_score.config(
+            text="—"
+        )
+
+        self.live_rul.config(
+            text="—"
         )
 
         self.event_label.config(
 
             text=(
-                "Press START to replay actual processed "
-                "test-set data."
-            )
+                "Press START LIVE REPLAY to replay "
+                "the processed test-set windows."
+            ),
+
+            fg=self.MUTED
         )
 
     # ==========================================================
@@ -1490,13 +1477,19 @@ class PredictiveMaintenanceDashboard:
 
     def toggle(self):
 
+        # ------------------------------------------------------
+        # STOP
+        # ------------------------------------------------------
+
         if self.running:
 
             self.running = False
 
             self.start_button.config(
 
-                text="▶  START LIVE TEST REPLAY"
+                text="▶  START LIVE REPLAY",
+
+                bg="#1769AA"
             )
 
             self.header_status.config(
@@ -1515,11 +1508,39 @@ class PredictiveMaintenanceDashboard:
 
             return
 
+        # ------------------------------------------------------
+        # START
+        # ------------------------------------------------------
+
+        if self.total_windows == 0:
+
+            self.header_status.config(
+
+                text="● DATA ERROR",
+
+                fg=self.RED
+            )
+
+            self.event_label.config(
+
+                text=(
+                    "No fusion test data found."
+                ),
+
+                fg=self.RED
+            )
+
+            return
+
         self.running = True
+
+        self.window_index = 0
 
         self.start_button.config(
 
-            text="■  STOP REPLAY"
+            text="■  STOP REPLAY",
+
+            bg="#9B3D46"
         )
 
         self.header_status.config(
@@ -1545,8 +1566,11 @@ class PredictiveMaintenanceDashboard:
     def update_replay(self):
 
         if not self.running:
-
             return
+
+        # ------------------------------------------------------
+        # LOOP
+        # ------------------------------------------------------
 
         if self.window_index >= self.total_windows:
 
@@ -1554,51 +1578,49 @@ class PredictiveMaintenanceDashboard:
 
         index = self.window_index
 
-        # ------------------------------------------------------
+        # ======================================================
         # FUSION RESULT
-        # ------------------------------------------------------
+        # ======================================================
 
-        if not self.fusion_data.empty:
+        row = self.fusion_data.iloc[index]
 
-            row = self.fusion_data.iloc[index]
+        try:
 
             fused_score = float(
                 row["fused_score"]
             )
 
+        except Exception:
+
+            fused_score = 0.0
+
+        try:
+
             prediction = int(
                 row["fusion_prediction"]
             )
 
-            actual = int(
-                row["actual_label"]
-            )
-
-        else:
-
-            fused_score = 0
+        except Exception:
 
             prediction = 0
 
-            actual = 0
-
-        # ------------------------------------------------------
-        # NORMALIZE SCORE FOR DISPLAY
-        # ------------------------------------------------------
-
-        score_min = 0
-
-        score_max = 1
+        # ======================================================
+        # NORMALIZE FUSED SCORE
+        # ======================================================
 
         try:
 
-            score_min = self.fusion_data[
-                "fused_score"
-            ].min()
+            score_min = float(
+                self.fusion_data[
+                    "fused_score"
+                ].min()
+            )
 
-            score_max = self.fusion_data[
-                "fused_score"
-            ].max()
+            score_max = float(
+                self.fusion_data[
+                    "fused_score"
+                ].max()
+            )
 
             if score_max > score_min:
 
@@ -1613,7 +1635,9 @@ class PredictiveMaintenanceDashboard:
                         score_max
                         - score_min
                     )
-                ) * 100
+                    * 100
+
+                )
 
             else:
 
@@ -1635,14 +1659,12 @@ class PredictiveMaintenanceDashboard:
             )
         )
 
-        # ------------------------------------------------------
+        # ======================================================
         # WINDOW INFORMATION
-        # ------------------------------------------------------
+        # ======================================================
 
         engine = "—"
-
         cycle = "—"
-
         target_rul = None
 
         if not self.window_data.empty:
@@ -1663,9 +1685,9 @@ class PredictiveMaintenanceDashboard:
 
                 pass
 
-        # ------------------------------------------------------
+        # ======================================================
         # SENSOR INFORMATION
-        # ------------------------------------------------------
+        # ======================================================
 
         sensor_row = None
 
@@ -1673,7 +1695,6 @@ class PredictiveMaintenanceDashboard:
 
             try:
 
-                # Use engine/cycle when possible
                 matching = self.sensor_data[
 
                     (
@@ -1696,79 +1717,100 @@ class PredictiveMaintenanceDashboard:
 
                 if not matching.empty:
 
-                    sensor_row = matching.iloc[0]
+                    sensor_row = (
+                        matching.iloc[0]
+                    )
 
                 else:
 
-                    sensor_row = self.sensor_data.iloc[
-                        index % len(self.sensor_data)
-                    ]
+                    sensor_row = (
+                        self.sensor_data.iloc[
+                            index
+                            % len(
+                                self.sensor_data
+                            )
+                        ]
+                    )
 
             except Exception:
 
-                sensor_row = self.sensor_data.iloc[
-                    index % len(self.sensor_data)
-                ]
+                sensor_row = (
+                    self.sensor_data.iloc[
+                        index
+                        % len(
+                            self.sensor_data
+                        )
+                    ]
+                )
 
-        # ------------------------------------------------------
-        # UPDATE SENSORS
-        # ------------------------------------------------------
+        # ======================================================
+        # SENSOR VALUES
+        # ======================================================
 
         sensor_values = {}
 
         if sensor_row is not None:
 
-            for name, item in self.sensor_widgets.items():
+            for name, item in (
+                self.sensor_widgets.items()
+            ):
 
                 column = item["column"]
 
                 try:
 
-                    raw_value = float(
+                    value = float(
                         sensor_row[column]
                     )
 
                 except Exception:
 
-                    raw_value = 0
+                    value = 0.0
 
-                sensor_values[name] = raw_value
+                sensor_values[name] = value
 
-        # ------------------------------------------------------
-        # DISPLAY SENSOR VALUES
-        #
-        # We normalize each displayed sensor independently
-        # so the GUI can visualize different physical ranges.
-        # ------------------------------------------------------
+        # ======================================================
+        # SENSOR RANGES
+        # ======================================================
 
-        sensor_ranges = {
+        sensor_ranges = {}
 
-            "Temperature": (
-                self.sensor_data["sensor_4"].min(),
-                self.sensor_data["sensor_4"].max()
-            ),
+        if not self.sensor_data.empty:
 
-            "Pressure": (
-                self.sensor_data["sensor_12"].min(),
-                self.sensor_data["sensor_12"].max()
-            ),
+            for name, item in (
+                self.sensor_widgets.items()
+            ):
 
-            "Speed": (
-                self.sensor_data["sensor_7"].min(),
-                self.sensor_data["sensor_7"].max()
-            ),
+                column = item["column"]
 
-            "Vibration": (
-                self.sensor_data["sensor_9"].min(),
-                self.sensor_data["sensor_9"].max()
-            ),
+                try:
 
-            "Flow": (
-                self.sensor_data["sensor_21"].min(),
-                self.sensor_data["sensor_21"].max()
-            )
+                    sensor_ranges[name] = (
 
-        } if not self.sensor_data.empty else {}
+                        float(
+                            self.sensor_data[
+                                column
+                            ].min()
+                        ),
+
+                        float(
+                            self.sensor_data[
+                                column
+                            ].max()
+                        )
+
+                    )
+
+                except Exception:
+
+                    sensor_ranges[name] = (
+                        0,
+                        100
+                    )
+
+        # ======================================================
+        # UPDATE SENSOR GUI
+        # ======================================================
 
         for name, value in sensor_values.items():
 
@@ -1783,10 +1825,16 @@ class PredictiveMaintenanceDashboard:
 
                 visual = (
 
-                    (value - low)
+                    (
+                        value - low
+                    )
                     /
-                    (high - low)
-                ) * 100
+                    (
+                        high - low
+                    )
+                    * 100
+
+                )
 
             else:
 
@@ -1797,9 +1845,7 @@ class PredictiveMaintenanceDashboard:
                 0,
 
                 min(
-
                     100,
-
                     visual
                 )
             )
@@ -1813,60 +1859,20 @@ class PredictiveMaintenanceDashboard:
                 text=f"{value:.2f}"
             )
 
-        # ------------------------------------------------------
-        # MACHINE STATE
-        # ------------------------------------------------------
-
-        # Important:
+        # ======================================================
+        # MACHINE STATUS
         #
-        # prediction = 1 means the actual fusion classifier
-        # flagged the window.
+        # ONLY TWO STATES:
         #
-        # For presentation we additionally use score bands
-        # to distinguish early degradation from a strong alert.
-        #
-        # This is a visualization layer; the actual fusion
-        # prediction remains the project's real output.
+        # NORMAL
+        # DEGRADATION
+        # ======================================================
 
         if prediction == 1:
 
-            state = "FAULT"
-
-            self.machine_status.config(
-
-                text="🔴  FAULT DETECTED",
-
-                fg=self.RED
-            )
-
-            self.machine_message.config(
-
-                text=(
-                    "Fusion model has flagged this "
-                    "test window as anomalous"
-                )
-            )
-
-            self.fault_progress.configure(
-
-                style="Fault.Horizontal.TProgressbar"
-            )
-
-            self.event_label.config(
-
-                text=(
-                    f"⚠ Fusion anomaly detected | "
-                    f"Window {index + 1} | "
-                    f"Engine {engine} | "
-                    f"Cycle {cycle}"
-                ),
-
-                fg=self.RED
-            )
-
-        elif display_score >= 35:
-
-            state = "DEGRADATION"
+            # --------------------------------------------------
+            # ANOMALOUS WINDOW
+            # --------------------------------------------------
 
             self.machine_status.config(
 
@@ -1878,8 +1884,8 @@ class PredictiveMaintenanceDashboard:
             self.machine_message.config(
 
                 text=(
-                    "Sensor behaviour is moving "
-                    "outside the normal region"
+                    "Fusion model detected abnormal "
+                    "sensor behaviour"
                 )
             )
 
@@ -1891,8 +1897,12 @@ class PredictiveMaintenanceDashboard:
             self.event_label.config(
 
                 text=(
-                    "Early warning: increasing anomaly "
-                    "behaviour detected."
+
+                    f"⚠ DEGRADATION DETECTED  |  "
+                    f"Window {index + 1:,}  |  "
+                    f"Engine {engine}  |  "
+                    f"Cycle {cycle}"
+
                 ),
 
                 fg=self.ORANGE
@@ -1900,7 +1910,9 @@ class PredictiveMaintenanceDashboard:
 
         else:
 
-            state = "NORMAL"
+            # --------------------------------------------------
+            # NORMAL WINDOW
+            # --------------------------------------------------
 
             self.machine_status.config(
 
@@ -1925,34 +1937,38 @@ class PredictiveMaintenanceDashboard:
             self.event_label.config(
 
                 text=(
-                    "✓ Sensor behaviour within "
-                    "expected region."
+
+                    f"✓ NORMAL  |  "
+                    f"Window {index + 1:,}  |  "
+                    f"Engine {engine}  |  "
+                    f"Cycle {cycle}"
+
                 ),
 
                 fg=self.GREEN
             )
 
-        # ------------------------------------------------------
+        # ======================================================
         # ANOMALY SCORE
-        # ------------------------------------------------------
+        # ======================================================
 
-        self.fault_progress["value"] = display_score
+        self.fault_progress["value"] = (
+            display_score
+        )
 
         self.fault_score.config(
 
             text=f"{display_score:.1f}%"
         )
 
-        # ------------------------------------------------------
-        # LIVE RUL
-        # ------------------------------------------------------
+        # ======================================================
+        # REFERENCE RUL
+        # ======================================================
 
         if target_rul is not None:
 
             live_rul = max(
-
                 0,
-
                 target_rul
             )
 
@@ -1964,53 +1980,59 @@ class PredictiveMaintenanceDashboard:
             self.live_rul_info.config(
 
                 text=(
-                    "Ground-truth test-window RUL • "
-                    "LSTM prediction model evaluated separately"
+                    "Reference RUL for this "
+                    "test window"
                 )
             )
 
         else:
 
             self.live_rul.config(
-
                 text="—"
             )
 
-        # ------------------------------------------------------
+        # ======================================================
         # REPLAY INFORMATION
-        # ------------------------------------------------------
+        # ======================================================
 
         self.window_label.config(
 
-            text=f"Window: {index + 1:,}"
+            text=(
+                f"Window: {index + 1:,}"
+            )
         )
 
         self.engine_label.config(
 
-            text=f"Engine: {engine}"
+            text=(
+                f"Engine: {engine}"
+            )
         )
 
         self.cycle_label.config(
 
-            text=f"End cycle: {cycle}"
+            text=(
+                f"End cycle: {cycle}"
+            )
         )
 
         self.replay_progress["value"] = (
-
             index + 1
         )
 
         self.replay_count.config(
 
             text=(
+
                 f"{index + 1:,} / "
                 f"{self.total_windows:,}"
+
             )
         )
 
-        # ------------------------------------------------------
-        # ADVANCE
-        # ------------------------------------------------------
+        # ======================================================
+        # NEXT WINDOW
+        # ======================================================
 
         self.window_index += 1
 
@@ -2031,7 +2053,7 @@ class PredictiveMaintenanceDashboard:
 
 
 # ==============================================================
-# START
+# START APPLICATION
 # ==============================================================
 
 if __name__ == "__main__":
