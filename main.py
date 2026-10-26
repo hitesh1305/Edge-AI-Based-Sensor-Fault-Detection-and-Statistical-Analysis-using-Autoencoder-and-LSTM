@@ -334,6 +334,19 @@ def main():
 
     step(9, "Creating sliding windows...")
 
+    
+    from pathlib import Path
+    
+    export_path = Path("output/tables/processed_test_df_for_pi.csv")
+    export_path.parent.mkdir(parents=True, exist_ok=True)
+    
+    test_df.to_csv(export_path, index=False)
+    
+    print(f"Processed test DataFrame exported to: {export_path}")
+    print(f"Export shape: {test_df.shape}")
+    print(f"Engine IDs: {sorted(test_df['engine_id'].unique().tolist())}")
+
+    
     window_generator = WindowGenerator(
         window_size=WINDOW_SIZE,
         stride=1
@@ -531,7 +544,23 @@ def main():
             wavelet_test
         )
     )
+    # Save per-window Isolation Forest predictions
 
+    if_test_output = pd.DataFrame({
+        "window_id": wavelet_test["window_id"].to_numpy(),
+        "anomaly_prediction": test_if_predictions,
+        "decision_score": test_if_scores,
+    })
+
+    if_test_output.to_csv(
+        "output/tables/isolation_forest_test_predictions.csv",
+        index=False
+    )
+
+    print(
+        "Isolation Forest test predictions saved:",
+        "output/tables/isolation_forest_test_predictions.csv"
+    )
     test_if_labels = quiet_call(
         isolation_forest.create_rul_labels,
         metadata_test,
